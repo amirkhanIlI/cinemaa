@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <title>Clean Cinema</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" href="/static/icons/icon-192.png" type="image/png">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+    <link rel="stylesheet" href="/static/css/style.css?v=3">
+    <!-- HLS.js для воспроизведения m3u8 потоков -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
+</head>
+<body>
+    <!-- ============== ЭКРАН: Главная ============== -->
+    <div id="screen-home" class="screen active">
+        <!-- Поиск -->
+        <header class="search-bar">
+            <div class="search-wrap">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input id="search-input" type="search" placeholder="Фильм, сериал, аниме..." autocomplete="off">
+                <button id="search-clear" class="btn-icon hidden" aria-label="Очистить">✕</button>
+            </div>
+        </header>
+
+        <!-- Продолжить просмотр -->
+        <section id="continue-section" class="section hidden">
+            <h2 class="section-title">▶ Продолжить просмотр</h2>
+            <div id="continue-list" class="card-row"></div>
+        </section>
+
+        <!-- Результаты поиска -->
+        <section id="results-section" class="section hidden">
+            <h2 class="section-title">Результаты поиска</h2>
+            <div id="results-list" class="card-grid"></div>
+        </section>
+
+        <!-- Пустое состояние -->
+        <section id="empty-state" class="section">
+            <div class="empty-hero">
+                <div class="empty-icon">🎬</div>
+                <h1>Clean Cinema</h1>
+                <p>Введи название фильма или сериала</p>
+            </div>
+        </section>
+
+        <!-- Спиннер -->
+        <div id="loading-spinner" class="spinner hidden">
+            <div class="spinner-ring"></div>
+        </div>
+    </div>
+
+    <!-- ============== ЭКРАН: Детали фильма ============== -->
+    <div id="screen-details" class="screen">
+        <header class="details-header">
+            <button id="btn-back" class="btn-icon" aria-label="Назад">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+            </button>
+            <h2 id="details-title" class="header-title"></h2>
+        </header>
+
+        <div class="details-body">
+            <div class="details-top">
+                <img id="details-poster" class="details-poster" alt="Постер">
+                <div class="details-meta">
+                    <span id="details-year" class="badge"></span>
+                    <span id="details-rating" class="badge badge-gold"></span>
+                    <span id="details-type" class="badge"></span>
+                    <p id="details-orig-title" class="orig-title"></p>
+                </div>
+            </div>
+            <p id="details-description" class="details-desc"></p>
+
+            <!-- Озвучки -->
+            <div id="translators-section">
+                <h3 class="section-title">Озвучка</h3>
+                <div id="translators-list" class="chip-row"></div>
+            </div>
+
+            <!-- Сезоны (для сериалов) -->
+            <div id="seasons-section" class="hidden">
+                <h3 class="section-title">Сезон</h3>
+                <div id="seasons-list" class="chip-row"></div>
+            </div>
+
+            <!-- Серии (для сериалов) -->
+            <div id="episodes-section" class="hidden">
+                <h3 class="section-title">Серии</h3>
+                <div id="episodes-list" class="episode-grid"></div>
+            </div>
+
+            <!-- Кнопка воспроизведения (для фильмов) -->
+            <button id="btn-play-movie" class="btn-play hidden">
+                <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg>
+                Смотреть
+            </button>
+        </div>
+    </div>
+
+    <!-- ============== ЭКРАН: Плеер ============== -->
+    <div id="screen-player" class="screen">
+        <div id="player-container" class="player-container">
+            <video id="video-player" playsinline webkit-playsinline></video>
+
+            <!-- Оверлей управления -->
+            <div id="player-overlay" class="player-overlay">
+                <!-- Верхняя панель -->
+                <div class="player-top-bar">
+                    <button id="btn-player-back" class="btn-icon" aria-label="Назад">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                    </button>
+                    <span id="player-title" class="player-title-text"></span>
+                    <div class="player-top-right">
+                        <button id="btn-audio" class="btn-text" aria-label="Озвучка">Озвучка</button>
+                        <button id="btn-quality" class="btn-text" aria-label="Качество">Авто</button>
+                        <button id="btn-native-player" class="btn-text" aria-label="Плеер iPhone">📱 Плеер</button>
+                    </div>
+                </div>
+
+                <!-- Зоны двойного тапа -->
+                <div class="player-tap-zones">
+                    <div id="tap-left" class="tap-zone tap-left">
+                        <div class="tap-ripple">
+                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>
+                            <span>−10с</span>
+                        </div>
+                    </div>
+                    <div id="tap-center" class="tap-zone tap-center"></div>
+                    <div id="tap-right" class="tap-zone tap-right">
+                        <div class="tap-ripple">
+                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>
+                            <span>+10с</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Нижняя панель -->
+                <div class="player-bottom-bar">
+                    <button id="btn-play-pause" class="btn-icon-lg" aria-label="Пауза/Воспроизведение">
+                        <svg id="icon-play" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg>
+                        <svg id="icon-pause" viewBox="0 0 24 24" fill="currentColor" class="hidden"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                    </button>
+                    <span id="player-time-current" class="player-time">0:00</span>
+                    <div id="player-progress-bar" class="player-progress-bar">
+                        <div id="player-progress-buffered" class="progress-buffered"></div>
+                        <div id="player-progress-played" class="progress-played"></div>
+                        <div id="player-progress-handle" class="progress-handle"></div>
+                    </div>
+                    <span id="player-time-duration" class="player-time">0:00</span>
+                    <button id="btn-fullscreen" class="btn-icon" aria-label="Полный экран">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+                            <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Модальное окно выбора качества -->
+            <div id="quality-modal" class="modal hidden">
+                <div class="modal-content">
+                    <h3>Качество видео</h3>
+                    <div id="quality-options" class="modal-options"></div>
+                </div>
+            </div>
+
+            <!-- Модальное окно выбора озвучки -->
+            <div id="audio-modal" class="modal hidden">
+                <div class="modal-content">
+                    <h3>Выбор озвучки</h3>
+                    <div id="audio-options" class="modal-options"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Скрипты -->
+    <script src="/static/js/storage.js?v=3"></script>
+    <script src="/static/js/player.js?v=3"></script>
+    <script src="/static/js/app.js?v=3"></script>
+</body>
+</html>

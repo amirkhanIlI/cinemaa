@@ -154,6 +154,141 @@ const CinemaApp = (() => {
         return card;
     }
 
+    // ─── Клиентский фоллбэк на Collaps CDN (для обхода блокировки серверных IP / 410) ───
+
+    async function fetchCollapsHtml(imdbId) {
+        try {
+            const resp = await fetch(`https://api.nextembed.ws/embed/imdb/${imdbId}`);
+            if (resp.ok) {
+                return await resp.text();
+            }
+        } catch (e) {
+            console.warn('[Collaps Client] direct fetch failed:', e);
+        }
+        return null;
+    }
+
+    async function enrichDetailsClientSide(data) {
+        if (!data || !data.imdb_id) return;
+        const html = await fetchCollapsHtml(data.imdb_id);
+        if (!html) return;
+
+        if (data.type === 'series') {
+            for (const line of html.split('\n')) {
+                if (line.includes('seasons:[{') || line.includes('seasons: [{')) {
+                    const m = line.match(/seasons\s*:\s*(\[\s*\{.*\}\s*\])/);
+                    if (m) {
+                        try {
+                            const sList = JSON.parse(m[1]);
+                            data.seasons = {};
+                            data.translators = [];
+                            for (const s of sList) {
+                                const sNum = String(s.season);
+                                const eps = (s.episodes || [])
+                                    .map(e => parseInt(e.episode))
+                                    .filter(e => !isNaN(e));
+                                if (eps.length > 0) {
+                                    data.seasons[sNum] = eps.sort((a, b) => a - b);
+                                }
+                                if (data.translators.length === 0 && s.episodes && s.episodes[0]) {
+                                    const names = s.episodes[0].audio?.names || [];
+                                    data.translators = names.map((name, idx) => ({ id: idx, name }));
+                                }
+                            }
+                        } catch (err) {
+                            console.error('[Collaps Client] seasons parse error:', err);
+                        }
+                    }
+                    break;
+                }
+            }
+        } else {
+            const audioMatch = html.match(/audio\s*:\s*(\{.*?\})\s*,\s*subtitles/);
+            if (audioMatch) {
+                try {
+                    const audData = JSON.parse(audioMatch[1]);
+                    const names = audData.names || [];
+                    if (names.length > 0) {
+                        data.translators = names.map((name, idx) => ({ id: idx, name }));
+                    }
+                } catch (e) {}
+            }
+        }
+    }
+
+    async function fetchClientSideStream(imdbId, mediaType, season, episode, translatorId) {
+        const html = await fetchCollapsHtml(imdbId);
+        if (!html) return null;
+
+        let tokenVal = '';
+        const tokenMatch = html.match(/var\s+lok\s*=\s*1\s*,\s*([a-f0-9]+)\s*=\s*["']([^"']+)["']/);
+        if (tokenMatch) {
+            tokenVal = tokenMatch[2];
+        }
+
+        let baseHls = '';
+        let audioTracks = [];
+
+        if (mediaType === 'series' && season != null && episode != null) {
+            for (const line of html.split('\n')) {
+                if (line.includes('seasons:[{') || line.includes('seasons: [{')) {
+                    const m = line.match(/seasons\s*:\s*(\[\s*\{.*\}\s*\])/);
+                    if (m) {
+                        try {
+                            const sList = JSON.parse(m[1]);
+                            for (const s of sList) {
+                                if (parseInt(s.season) === parseInt(season)) {
+                                    for (const ep of (s.episodes || [])) {
+                                        if (parseInt(ep.episode) === parseInt(episode)) {
+                                            baseHls = ep.hls || '';
+                                            audioTracks = ep.audio?.names || [];
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (err) {}
+                    }
+                    break;
+                }
+            }
+        } else {
+            const hlsMatch = html.match(/hls\s*:\s*["']([^"']+)["']/);
+            if (hlsMatch) {
+                baseHls = hlsMatch[1];
+            }
+            const audioMatch = html.match(/audio\s*:\s*(\{.*?\})\s*,\s*subtitles/);
+            if (audioMatch) {
+                try {
+                    const audData = JSON.parse(audioMatch[1]);
+                    audioTracks = audData.names || [];
+                } catch (e) {}
+            }
+        }
+
+        if (!baseHls) return null;
+
+        let finalHls = baseHls;
+        if (tokenVal) {
+            finalHls += (finalHls.includes('?') ? '&' : '?') + tokenVal;
+        }
+
+        const streams = {
+            'Auto (1080p/720p)': finalHls,
+            '1080p': finalHls,
+            '720p': finalHls,
+            '480p': finalHls,
+            '360p': finalHls,
+        };
+
+        return {
+            streams: streams,
+            hls_url: finalHls,
+            audio_tracks: audioTracks,
+            selected_audio_index: translatorId || 0,
+        };
+    }
+
     // ─── Детали фильма ───
 
     async function openDetails(url) {
@@ -164,6 +299,12 @@ const CinemaApp = (() => {
             const resp = await fetch(`/api/details?url=${encodeURIComponent(url)}`);
             const data = await resp.json();
             currentDetails = data;
+
+            // Если сервер вернул пустые сезоны или стандартную заглушку (из-за блокировки 410 серверного IP),
+            // парсим сезоны и озвучки напрямую из браузера
+            if (data.imdb_id && ((data.type === 'series' && (!data.seasons || Object.keys(data.seasons).length === 0)) || (!data.translators || data.translators.length <= 1))) {
+                await enrichDetailsClientSide(data);
+            }
 
             // Заполняем UI
             detailsTitle.textContent = data.title;
@@ -302,16 +443,39 @@ const CinemaApp = (() => {
         spinner.classList.remove('hidden');
 
         try {
-            let url = `/api/stream?url=${encodeURIComponent(currentDetails.url)}&translator_id=${selectedTranslator.id}`;
-            if (currentDetails.type === 'series' && selectedSeason && selectedEpisode) {
-                url += `&season=${selectedSeason}&episode=${selectedEpisode}`;
+            let data = null;
+            try {
+                let url = `/api/stream?url=${encodeURIComponent(currentDetails.url)}&translator_id=${selectedTranslator.id}`;
+                if (currentDetails.type === 'series' && selectedSeason && selectedEpisode) {
+                    url += `&season=${selectedSeason}&episode=${selectedEpisode}`;
+                }
+
+                const resp = await fetch(url);
+                data = await resp.json();
+            } catch (err) {
+                console.warn('Backend stream request failed:', err);
             }
 
-            const resp = await fetch(url);
-            const data = await resp.json();
+            // Если сервер вернул 410 (блокировка серверного IP в облаке) или ошибку,
+            // запускаем резервное прямое извлечение из браузера клиента
+            if (!data || data.error || !data.streams || Object.keys(data.streams).length === 0) {
+                if (currentDetails.imdb_id) {
+                    console.log('[Collaps Client] Falling back to direct client-side stream extraction...');
+                    const clientStream = await fetchClientSideStream(
+                        currentDetails.imdb_id,
+                        currentDetails.type,
+                        selectedSeason,
+                        selectedEpisode,
+                        selectedTranslator ? selectedTranslator.id : 0
+                    );
+                    if (clientStream && clientStream.hls_url) {
+                        data = clientStream;
+                    }
+                }
+            }
 
-            if (data.error) {
-                alert('Ошибка: ' + data.error);
+            if (!data || data.error) {
+                alert('Ошибка: ' + (data ? data.error : 'Не удалось получить видеопоток'));
                 return;
             }
 

@@ -1,5 +1,5 @@
 // Service Worker — кэширование статики для быстрого старта PWA
-const CACHE_NAME = 'clean-cinema-v3';
+const CACHE_NAME = 'clean-cinema-v4';
 const STATIC_ASSETS = [
     '/',
     '/static/css/style.css',

@@ -291,3 +291,110 @@ async def get_stream(
         "audio_tracks": audio_tracks,
         "selected_audio_index": translator_id,
     }
+
+# ---------------------------------------------------------------------------
+# Получение метаданных эпизодов из TMDB
+# ---------------------------------------------------------------------------
+async def get_episode_names(tv_id: str | int, season_number: int) -> dict:
+    """Get episode names, overviews, and runtimes from TMDB."""
+    clean_id = str(tv_id).replace("series_", "").replace("tv_", "")
+    client = await _get_client()
+    url = f"{TMDB_BASE}/tv/{clean_id}/season/{season_number}"
+    params = {"api_key": TMDB_API_KEY, "language": "ru-RU"}
+
+    try:
+        resp = await client.get(url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        episodes = {}
+        for ep in data.get("episodes", []):
+            ep_num = ep.get("episode_number")
+            if ep_num:
+                episodes[str(ep_num)] = {
+                    "name": ep.get("name") or f"Серия {ep_num}",
+                    "overview": ep.get("overview") or "",
+                    "runtime": ep.get("runtime"),
+                    "still_path": f"https://image.tmdb.org/t/p/w300{ep['still_path']}" if ep.get("still_path") else None,
+                }
+        return {"episodes": episodes}
+    except Exception as e:
+        logger.error(f"Error fetching episode names for tv/{tv_id}/season/{season_number}: {e}")
+        return {"episodes": {}}
+
+# ---------------------------------------------------------------------------
+# Получение потока из Kodik
+# ---------------------------------------------------------------------------
+async def get_stream_kodik(
+    media_type: str,
+    tmdb_id: str | int,
+    translator_id: int = 0,
+    season: int | None = None,
+    episode: int | None = None,
+) -> dict:
+    """Try to get stream from Kodik balancer."""
+    try:
+        clean_id = str(tmdb_id).replace("series_", "").replace("tv_", "").replace("movie_", "")
+        from server.parsers import kodik
+        # Get IMDB ID first
+        imdb_id = await get_imdb_id(media_type, clean_id)
+
+        # Get title from TMDB for search
+        client = await _get_client()
+        m_type = "tv" if media_type == "series" else "movie"
+        url = f"{TMDB_BASE}/{m_type}/{tmdb_id}"
+        params = {"api_key": TMDB_API_KEY, "language": "ru-RU"}
+        resp = await client.get(url, params=params)
+        title = ""
+        if resp.status_code == 200:
+            tmdb_data = resp.json()
+            title = tmdb_data.get("title") or tmdb_data.get("name") or ""
+
+        if not title:
+            return {"error": "Не удалось найти фильм в Kodik"}
+
+        results = await kodik.search(title)
+        if not results:
+            return {"error": "Фильм не найден в Kodik"}
+
+        # Find best match
+        best = results[0]
+        kodik_link = best.get("url") or ""
+        if not kodik_link:
+            items = best.get("_items", [])
+            if items:
+                kodik_link = items[0].get("link", "")
+
+        if not kodik_link:
+            return {"error": "Ссылка на поток не найдена в Kodik"}
+
+        stream_info = await kodik.get_stream_for_item(kodik_link)
+        player_url = stream_info.get("player_url", "")
+
+        if not player_url:
+            return {"error": "Видеопоток не найден в Kodik"}
+
+        return {
+            "player_url": player_url,
+            "source": "kodik",
+            "audio_tracks": [t["name"] for t in best.get("translators", [])],
+        }
+    except Exception as e:
+        logger.error(f"Kodik stream error: {e}")
+        return {"error": f"Kodik: {e}"}
+
+# ---------------------------------------------------------------------------
+# Получение потока из HDRezka (заглушка)
+# ---------------------------------------------------------------------------
+async def get_stream_rezka(
+    media_type: str,
+    tmdb_id: str | int,
+    translator_id: int = 0,
+    season: int | None = None,
+    episode: int | None = None,
+) -> dict:
+    """Try to get stream from HDRezka balancer."""
+    try:
+        return {"error": "HDRezka временно недоступна (ISP блокировка)"}
+    except Exception as e:
+        logger.error(f"Rezka stream error: {e}")
+        return {"error": f"Rezka: {e}"}

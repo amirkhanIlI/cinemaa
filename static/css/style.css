@@ -1,4 +1,4 @@
-/* ===== Clean Cinema — Mobile-First Dark Theme ===== */
+/* ===== Clean Cinema — Mobile-First Dark Theme (V5) ===== */
 
 :root {
     --bg: #0f172a;
@@ -7,11 +7,11 @@
     --text: #f1f5f9;
     --text-dim: #94a3b8;
     --accent: #3b82f6;
-    --accent-glow: rgba(59, 130, 246, 0.3);
+    --accent-glow: rgba(59, 130, 246, 0.35);
     --gold: #fbbf24;
     --danger: #ef4444;
-    --radius: 12px;
-    --radius-sm: 8px;
+    --radius: 14px;
+    --radius-sm: 10px;
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -26,6 +26,13 @@ html, body {
     overflow-x: hidden;
     -webkit-tap-highlight-color: transparent;
     -webkit-text-size-adjust: 100%;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+input, textarea {
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 /* ===== Экраны ===== */
@@ -74,19 +81,66 @@ html, body {
     border: none;
     outline: none;
     color: var(--text);
-    font-size: 16px; /* предотвращает zoom на iOS */
+    font-size: 16px; /* предотвращает zoom на iOS Safari */
 }
 #search-input::placeholder { color: var(--text-dim); }
 
 .btn-icon {
     background: none; border: none; color: var(--text);
-    width: 32px; height: 32px; cursor: pointer;
+    min-width: 44px; min-height: 44px; width: 44px; height: 44px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     border-radius: 50%;
     transition: background 0.15s;
 }
 .btn-icon:active { background: var(--bg-elevated); }
-.btn-icon svg { width: 20px; height: 20px; }
+.btn-icon svg { width: 22px; height: 22px; }
+
+/* Кнопки с увеличенными сенсорными зонами (Apple HIG >= 44x44) */
+.btn-icon-touch {
+    background: none;
+    border: none;
+    color: #fff;
+    min-width: 44px;
+    min-height: 44px;
+    width: 44px;
+    height: 44px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.15s, transform 0.1s;
+    touch-action: manipulation;
+}
+.btn-icon-touch:active {
+    background: rgba(255,255,255,0.2);
+    transform: scale(0.94);
+}
+.btn-icon-touch svg {
+    width: 24px;
+    height: 24px;
+}
+
+.btn-text-touch {
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: #fff;
+    min-height: 44px;
+    padding: 8px 14px;
+    border-radius: 22px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, transform 0.1s;
+    touch-action: manipulation;
+}
+.btn-text-touch:active {
+    background: rgba(255,255,255,0.3);
+    transform: scale(0.95);
+}
 
 /* ===== Секции ===== */
 .section { padding: 0 16px; margin-top: 20px; }
@@ -116,12 +170,12 @@ html, body {
 /* ===== Карточки «Продолжить просмотр» ===== */
 .card-row {
     display: flex;
-    gap: 12px;
+    gap: 14px;
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    padding-bottom: 4px;
+    padding-bottom: 6px;
 }
 .card-row::-webkit-scrollbar { display: none; }
 
@@ -135,6 +189,7 @@ html, body {
     cursor: pointer;
     transition: transform 0.15s;
     position: relative;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
 }
 .continue-card:active { transform: scale(0.97); }
 
@@ -153,7 +208,7 @@ html, body {
     font-size: 12px; color: var(--text-dim); margin-top: 2px;
 }
 .continue-progress-bar {
-    height: 3px;
+    height: 4px;
     background: var(--bg-elevated);
     border-radius: 2px;
     margin-top: 8px;
@@ -167,19 +222,21 @@ html, body {
 }
 .continue-card-delete {
     position: absolute;
-    top: 6px;
-    right: 6px;
-    background: rgba(0,0,0,0.6);
+    top: 8px;
+    right: 8px;
+    background: rgba(0,0,0,0.65);
     border: none;
-    color: var(--text-dim);
-    width: 28px;
-    height: 28px;
+    color: var(--text);
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     font-size: 14px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
 }
 
 /* ===== Карточки результатов поиска ===== */
@@ -195,6 +252,7 @@ html, body {
     overflow: hidden;
     cursor: pointer;
     transition: transform 0.15s;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
 }
 .search-card:active { transform: scale(0.97); }
 
@@ -224,6 +282,8 @@ html, body {
     display: flex; align-items: center; gap: 12px;
     padding: calc(12px + var(--safe-top)) 16px 12px;
     background: var(--bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
 }
 .header-title {
     font-size: 17px; font-weight: 600;
@@ -242,6 +302,7 @@ html, body {
     object-fit: cover;
     background: var(--bg-card);
     flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 .details-meta {
     display: flex; flex-wrap: wrap; gap: 6px;
@@ -250,14 +311,14 @@ html, body {
 
 .badge {
     display: inline-block;
-    padding: 4px 10px;
+    padding: 5px 12px;
     border-radius: 20px;
     font-size: 12px;
     font-weight: 600;
     background: var(--bg-card);
     color: var(--text-dim);
 }
-.badge-gold { background: rgba(251,191,36,0.15); color: var(--gold); }
+.badge-gold { background: rgba(251,191,36,0.18); color: var(--gold); }
 
 .orig-title {
     font-size: 13px; color: var(--text-dim);
@@ -276,60 +337,72 @@ html, body {
     margin-bottom: 16px;
 }
 .chip {
-    padding: 8px 16px;
-    border-radius: 20px;
+    padding: 10px 18px;
+    min-height: 44px;
+    border-radius: 22px;
     border: 1px solid var(--bg-elevated);
     background: var(--bg-card);
     color: var(--text);
-    font-size: 13px;
+    font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 .chip.active {
     background: var(--accent);
     border-color: var(--accent);
     color: #fff;
+    box-shadow: 0 0 10px var(--accent-glow);
 }
 .chip:active { transform: scale(0.95); }
 
-/* Серии */
+/* Серии (кнопки с номерами) */
 .episode-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
     gap: 8px;
     margin-bottom: 20px;
 }
 .episode-btn {
-    padding: 12px 8px;
+    padding: 12px 6px;
+    min-height: 48px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--bg-elevated);
     background: var(--bg-card);
     color: var(--text);
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     text-align: center;
     cursor: pointer;
     transition: all 0.15s;
     position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
 }
 .episode-btn.active {
     background: var(--accent);
     border-color: var(--accent);
     color: #fff;
+    box-shadow: 0 0 10px var(--accent-glow);
 }
 .episode-btn.watched::after {
     content: '';
     position: absolute;
-    bottom: 3px;
+    bottom: 4px;
     left: 50%;
     transform: translateX(-50%);
-    width: 16px;
+    width: 18px;
     height: 3px;
     border-radius: 2px;
     background: var(--accent);
 }
-.episode-btn:active { transform: scale(0.95); }
+.episode-btn:active { transform: scale(0.94); }
 
 /* Кнопка воспроизведения */
 .btn-play {
@@ -338,6 +411,7 @@ html, body {
     justify-content: center;
     gap: 10px;
     width: 100%;
+    min-height: 52px;
     padding: 14px;
     border: none;
     border-radius: var(--radius);
@@ -348,9 +422,10 @@ html, body {
     cursor: pointer;
     margin-top: 8px;
     margin-bottom: 20px;
-    transition: transform 0.15s;
+    transition: transform 0.15s, background 0.15s;
+    box-shadow: 0 4px 14px var(--accent-glow);
 }
-.btn-play svg { width: 20px; height: 20px; }
+.btn-play svg { width: 22px; height: 22px; }
 .btn-play:active { transform: scale(0.97); }
 
 /* ===== Плеер ===== */
@@ -373,10 +448,10 @@ html, body {
     justify-content: space-between;
     background: linear-gradient(
         to bottom,
-        rgba(0,0,0,0.7) 0%,
+        rgba(0,0,0,0.75) 0%,
         transparent 25%,
         transparent 75%,
-        rgba(0,0,0,0.7) 100%
+        rgba(0,0,0,0.85) 100%
     );
     transition: opacity 0.25s;
     z-index: 10;
@@ -393,28 +468,18 @@ html, body {
 
 .player-top-bar {
     display: flex; align-items: center; gap: 12px;
-    padding: calc(8px + var(--safe-top)) 12px 8px;
+    padding: calc(8px + var(--safe-top)) 14px 8px;
 }
 .player-title-text {
     flex: 1;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: 15px;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.7);
 }
 .player-top-right { display: flex; gap: 8px; }
-
-.btn-text {
-    background: rgba(255,255,255,0.15);
-    border: none;
-    color: #fff;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-}
 
 /* Зоны двойного тапа */
 .player-tap-zones {
@@ -433,62 +498,93 @@ html, body {
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    color: rgba(255,255,255,0.9);
+    color: rgba(255,255,255,0.95);
     opacity: 0;
     transform: scale(0.8);
     transition: all 0.15s;
     pointer-events: none;
 }
-.tap-ripple svg { width: 32px; height: 32px; }
-.tap-ripple span { font-size: 13px; font-weight: 600; }
+.tap-ripple svg { width: 36px; height: 36px; }
+.tap-ripple span { font-size: 14px; font-weight: 700; }
 .tap-ripple.show {
     opacity: 1;
-    transform: scale(1);
+    transform: scale(1.1);
 }
 
 /* Нижняя панель */
 .player-bottom-bar {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 12px calc(12px + var(--safe-bottom));
+    gap: 8px;
+    padding: 8px 14px calc(14px + var(--safe-bottom));
 }
 
-.btn-icon-lg {
-    background: none; border: none; color: #fff;
-    width: 44px; height: 44px;
+.btn-play-pause-lg {
+    min-width: 54px;
+    min-height: 54px;
+    width: 54px;
+    height: 54px;
+    background: rgba(255,255,255,0.2);
+    border: none;
+    border-radius: 50%;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: transform 0.1s, background 0.15s;
+    flex-shrink: 0;
 }
-.btn-icon-lg svg { width: 28px; height: 28px; }
+.btn-play-pause-lg:active {
+    transform: scale(0.92);
+    background: rgba(255,255,255,0.35);
+}
+.btn-play-pause-lg svg {
+    width: 28px;
+    height: 28px;
+}
+
+.btn-ep-nav {
+    flex-shrink: 0;
+    color: rgba(255,255,255,0.85);
+    margin: 0 2px;
+}
+.btn-ep-nav svg {
+    width: 22px;
+    height: 22px;
+}
 
 .player-time {
-    font-size: 12px;
+    font-size: 13px;
     font-variant-numeric: tabular-nums;
-    min-width: 36px;
+    min-width: 38px;
     text-align: center;
-    color: rgba(255,255,255,0.8);
+    color: rgba(255,255,255,0.85);
+    flex-shrink: 0;
 }
 
 .player-progress-bar {
-    flex: 1; height: 32px;
+    flex: 1; height: 36px;
     display: flex; align-items: center;
     position: relative;
     cursor: pointer;
     touch-action: none;
+    margin: 0 6px;
 }
 .player-progress-bar::before {
     content: '';
     position: absolute;
     left: 0; right: 0;
     height: 4px;
-    background: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.25);
     border-radius: 2px;
 }
 .progress-buffered {
     position: absolute;
     height: 4px;
-    background: rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.4);
     border-radius: 2px;
     left: 0;
     width: 0%;
@@ -503,20 +599,171 @@ html, body {
 }
 .progress-handle {
     position: absolute;
-    width: 14px; height: 14px;
+    width: 16px; height: 16px;
     border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 6px var(--accent-glow);
+    background: #fff;
+    box-shadow: 0 0 8px var(--accent-glow);
     left: 0%;
     transform: translateX(-50%);
     transition: transform 0.1s;
 }
 .progress-handle:active,
 .player-progress-bar.dragging .progress-handle {
-    transform: translateX(-50%) scale(1.4);
+    transform: translateX(-50%) scale(1.5);
+    background: var(--accent);
 }
 
-/* Модалка */
+/* Плавающая кнопка «Следующая серия (10с) ▶» */
+.btn-next-countdown {
+    position: absolute;
+    bottom: 80px;
+    right: 16px;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(59, 130, 246, 0.6);
+    color: #fff;
+    border-radius: 28px;
+    padding: 12px 20px;
+    min-height: 48px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 25;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 16px rgba(59, 130, 246, 0.4);
+    animation: slideInRight 0.3s ease-out;
+    transition: transform 0.15s, background 0.2s;
+    touch-action: manipulation;
+}
+.btn-next-countdown:active {
+    transform: scale(0.95);
+    background: var(--accent);
+}
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+/* ===== iOS Bottom Sheet для настроек (⚙️) ===== */
+.settings-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 1050;
+    opacity: 1;
+    transition: opacity 0.25s ease;
+}
+.settings-backdrop.hidden {
+    display: none !important;
+}
+
+.settings-sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #1e293b;
+    border-top-left-radius: 24px;
+    border-top-right-radius: 24px;
+    padding: 14px 20px calc(24px + var(--safe-bottom));
+    max-height: 75vh;
+    overflow-y: auto;
+    z-index: 1060;
+    transform: translateY(0);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 -8px 32px rgba(0,0,0,0.7);
+    border-top: 1px solid rgba(255,255,255,0.1);
+}
+.settings-sheet.hidden {
+    transform: translateY(100%);
+    pointer-events: none;
+    display: block !important; /* для анимации translateY */
+    visibility: hidden;
+}
+.sheet-drag-handle {
+    width: 40px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.35);
+    border-radius: 2px;
+    margin: 0 auto 14px;
+}
+.sheet-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 18px;
+    text-align: center;
+    color: #fff;
+}
+.settings-group {
+    margin-bottom: 20px;
+}
+.settings-label {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    letter-spacing: 0.5px;
+}
+.settings-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.settings-chip {
+    padding: 10px 16px;
+    min-height: 42px;
+    border-radius: 22px;
+    border: 1px solid var(--bg-elevated);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.settings-chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 0 12px var(--accent-glow);
+}
+.settings-chip:active {
+    transform: scale(0.95);
+}
+.settings-action-btn {
+    width: 100%;
+    min-height: 48px;
+    padding: 12px;
+    border-radius: var(--radius);
+    background: var(--bg-elevated);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.15s;
+    touch-action: manipulation;
+}
+.settings-action-btn:active {
+    background: var(--accent);
+}
+
+/* Модалка (legacy fallback) */
 .modal {
     position: absolute; inset: 0;
     background: rgba(0,0,0,0.7);
@@ -541,6 +788,7 @@ html, body {
 }
 .modal-option {
     padding: 10px 16px;
+    min-height: 44px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--bg-elevated);
     background: var(--bg);
@@ -549,6 +797,8 @@ html, body {
     cursor: pointer;
     text-align: left;
     transition: all 0.15s;
+    display: flex;
+    align-items: center;
 }
 .modal-option.active {
     border-color: var(--accent);
@@ -563,7 +813,7 @@ html, body {
     padding: 40px;
 }
 .spinner-ring {
-    width: 36px; height: 36px;
+    width: 38px; height: 38px;
     border: 3px solid var(--bg-elevated);
     border-top-color: var(--accent);
     border-radius: 50%;

@@ -1,42 +1,62 @@
 /**
- * player.js — Полноэкранный видеоплеер с HLS.js.
+ * player.js — Полноэкранный видеоплеер Clean Cinema V2 (Mobile-First / iOS HIG)
  *
  * Фичи:
- * - Воспроизведение HLS (.m3u8) потоков без задержек.
- * - Двойной тап: -10с / +10с с плавной анимацией.
- * - Переключение озвучки прямо во время просмотра.
- * - Переключение качества видео (Авто / 1080p / 720p / 480p / 360p).
- * - Автосохранение секунды каждые 2с + при блокировке экрана / сворачивании.
- * - Моментальное авто-возобновление с точностью до секунды.
+ * - HLS.js без ограничения 720p (capLevelToPlayerSize: false, честный 1080p).
+ * - Шторка настроек (⚙️ iOS Bottom Sheet):
+ *     * Выбор озвучки
+ *     * Выбор качества (Авто, 1080p, 720p, 480p, 360p) с авто-запоминанием
+ *     * Скорость (0.75x, 1x, 1.25x, 1.5x, 2x) с сохранением pitch
+ *     * Источник / Балансер (Collaps, Kodik, Rezka)
+ *     * Масштаб (Вписать / Заполнить)
+ *     * Картинка в картинке (PiP / iOS webkitSetPresentationMode)
+ *     * Таймер сна (15м, 30м, 45м, Конец серии)
+ * - Автопереход: плавающая кнопка «Следующая серия (10с) ▶» за 10с до конца.
+ * - Автоматический переход на след. серию при завершении видео.
+ * - Кнопки ⏮/⏭ (Предыдущая/Следующая серия) с безопасным отступом от прогресс-бара.
+ * - Двойной тап: ±10с с красивой анимацией.
+ * - Полное сохранение прогресса в localStorage + sendBeacon.
  */
 
 const CinemaPlayer = (() => {
-    // ─── DOM ───
-    const screen        = document.getElementById('screen-player');
-    const video         = document.getElementById('video-player');
-    const overlay       = document.getElementById('player-overlay');
-    const btnBack       = document.getElementById('btn-player-back');
-    const btnPlayPause  = document.getElementById('btn-play-pause');
-    const iconPlay      = document.getElementById('icon-play');
-    const iconPause     = document.getElementById('icon-pause');
-    const btnAudio      = document.getElementById('btn-audio');
-    const btnQuality    = document.getElementById('btn-quality');
-    const btnNativePlayer = document.getElementById('btn-native-player');
-    const btnFullscreen = document.getElementById('btn-fullscreen');
-    const timeCurrent   = document.getElementById('player-time-current');
-    const timeDuration  = document.getElementById('player-time-duration');
-    const progressBar   = document.getElementById('player-progress-bar');
-    const progressPlayed = document.getElementById('player-progress-played');
-    const progressBuffered = document.getElementById('player-progress-buffered');
-    const progressHandle = document.getElementById('player-progress-handle');
-    const playerTitle   = document.getElementById('player-title');
-    const tapLeft       = document.getElementById('tap-left');
-    const tapRight      = document.getElementById('tap-right');
-    const tapCenter     = document.getElementById('tap-center');
-    const qualityModal  = document.getElementById('quality-modal');
-    const qualityOptions = document.getElementById('quality-options');
-    const audioModal    = document.getElementById('audio-modal');
-    const audioOptions  = document.getElementById('audio-options');
+    // ─── DOM элементы ───
+    const screen             = document.getElementById('screen-player');
+    const video              = document.getElementById('video-player');
+    const overlay            = document.getElementById('player-overlay');
+    const btnBack            = document.getElementById('btn-player-back');
+    const btnPlayPause       = document.getElementById('btn-play-pause');
+    const iconPlay           = document.getElementById('icon-play');
+    const iconPause          = document.getElementById('icon-pause');
+    const btnPrevEp          = document.getElementById('btn-prev-ep');
+    const btnNextEp          = document.getElementById('btn-next-ep');
+    const btnNativePlayer    = document.getElementById('btn-native-player');
+    const btnSettings        = document.getElementById('btn-settings');
+    const btnFullscreen      = document.getElementById('btn-fullscreen');
+    const timeCurrent        = document.getElementById('player-time-current');
+    const timeDuration       = document.getElementById('player-time-duration');
+    const progressBar        = document.getElementById('player-progress-bar');
+    const progressPlayed     = document.getElementById('player-progress-played');
+    const progressBuffered   = document.getElementById('player-progress-buffered');
+    const progressHandle     = document.getElementById('player-progress-handle');
+    const playerTitle        = document.getElementById('player-title');
+    const tapLeft            = document.getElementById('tap-left');
+    const tapRight           = document.getElementById('tap-right');
+    const tapCenter          = document.getElementById('tap-center');
+
+    // Кнопка обратного отсчета
+    const btnNextCountdown   = document.getElementById('btn-next-countdown');
+    const nextCountdownText  = document.getElementById('next-countdown-text');
+
+    // Шторка настроек
+    const settingsBackdrop   = document.getElementById('settings-backdrop');
+    const settingsSheet      = document.getElementById('settings-sheet');
+    const settingsAudioOpts  = document.getElementById('settings-audio-options');
+    const settingsQualityOpts= document.getElementById('settings-quality-options');
+    const settingsSpeedOpts  = document.getElementById('settings-speed-options');
+    const settingsBalancerOpts = document.getElementById('settings-balancer-options');
+    const settingsAspectOpts = document.getElementById('settings-aspect-options');
+    const btnPip             = document.getElementById('btn-pip');
+    const settingsSleepOpts  = document.getElementById('settings-sleep-options');
 
     // ─── Состояние ───
     let hls = null;
@@ -48,30 +68,45 @@ const CinemaPlayer = (() => {
     let isDragging = false;
     let tapTimeout = null;
     let tapCount = 0;
+    let sleepTimerTimeout = null;
+    let sleepOnEnd = false;
 
     // ─── Инициализация ───
 
     function init() {
         btnBack.addEventListener('click', close);
         btnPlayPause.addEventListener('click', togglePlayPause);
-        
-        btnQuality.addEventListener('click', () => {
-            qualityModal.classList.toggle('hidden');
-            audioModal.classList.add('hidden');
-        });
-        
-        btnAudio.addEventListener('click', () => {
-            audioModal.classList.toggle('hidden');
-            qualityModal.classList.add('hidden');
-        });
 
-        qualityModal.addEventListener('click', (e) => {
-            if (e.target === qualityModal) qualityModal.classList.add('hidden');
-        });
-        audioModal.addEventListener('click', (e) => {
-            if (e.target === audioModal) audioModal.classList.add('hidden');
-        });
+        // Переключение серий
+        if (btnPrevEp) {
+            btnPrevEp.addEventListener('click', (e) => {
+                e.stopPropagation();
+                window.dispatchEvent(new CustomEvent('episode-prev'));
+            });
+        }
+        if (btnNextEp) {
+            btnNextEp.addEventListener('click', (e) => {
+                e.stopPropagation();
+                window.dispatchEvent(new CustomEvent('episode-next'));
+            });
+        }
 
+        // Кнопка следующей серии (плавающая)
+        if (btnNextCountdown) {
+            btnNextCountdown.addEventListener('click', (e) => {
+                e.stopPropagation();
+                btnNextCountdown.classList.add('hidden');
+                window.dispatchEvent(new CustomEvent('episode-next'));
+            });
+        }
+
+        // Открытие / закрытие настроек
+        btnSettings.addEventListener('click', toggleSettings);
+        if (settingsBackdrop) {
+            settingsBackdrop.addEventListener('click', closeSettings);
+        }
+
+        // Полный экран / Нативный плеер iOS
         btnFullscreen.addEventListener('click', toggleFullscreen);
         if (btnNativePlayer) {
             btnNativePlayer.addEventListener('click', toggleFullscreen);
@@ -82,7 +117,7 @@ const CinemaPlayer = (() => {
         document.addEventListener('pointermove', onProgressMove);
         document.addEventListener('pointerup', onProgressUp);
 
-        // Тапы
+        // Тапы (±10 сек)
         tapLeft.addEventListener('click', () => handleDoubleTap('left'));
         tapRight.addEventListener('click', () => handleDoubleTap('right'));
         tapCenter.addEventListener('click', toggleControls);
@@ -91,22 +126,20 @@ const CinemaPlayer = (() => {
         video.addEventListener('timeupdate', onTimeUpdate);
         video.addEventListener('progress', updateBuffered);
         video.addEventListener('loadedmetadata', onMetadataLoaded);
-        video.addEventListener('play',  updatePlayPauseIcon);
+        video.addEventListener('play', updatePlayPauseIcon);
         video.addEventListener('pause', () => { updatePlayPauseIcon(); saveProgress(); });
         video.addEventListener('seeked', saveProgress);
         video.addEventListener('ended', onVideoEnded);
 
-        // ─── Железобетонное сохранение секунды ───
+        // Железобетонное сохранение секунды
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') saveProgress();
         });
         window.addEventListener('pagehide', saveProgress);
         window.addEventListener('beforeunload', saveProgress);
 
-        // ─── События нативного плеера iOS (iPhone / iPad) ───
-        video.addEventListener('webkitbeginfullscreen', () => {
-            showControls();
-        });
+        // Нативный плеер iOS (iPhone / iPad)
+        video.addEventListener('webkitbeginfullscreen', () => showControls());
         video.addEventListener('webkitendfullscreen', () => {
             saveProgress();
             updatePlayPauseIcon();
@@ -116,9 +149,168 @@ const CinemaPlayer = (() => {
 
         // Контролы
         overlay.addEventListener('click', (e) => {
-            if (e.target.closest('button, .tap-zone, .modal, .player-progress-bar')) return;
+            if (e.target.closest('button, .tap-zone, .settings-sheet, .player-progress-bar')) return;
             toggleControls();
         });
+
+        // Настройка обработчиков шторки
+        initSettingsSheetHandlers();
+    }
+
+    // ─── Шторка настроек ───
+
+    function initSettingsSheetHandlers() {
+        // Скорость
+        if (settingsSpeedOpts) {
+            settingsSpeedOpts.querySelectorAll('.settings-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    const sp = parseFloat(chip.dataset.speed || '1');
+                    setSpeed(sp);
+                });
+            });
+        }
+
+        // Балансер
+        if (settingsBalancerOpts) {
+            settingsBalancerOpts.querySelectorAll('.settings-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    const source = chip.dataset.source;
+                    setBalancer(source);
+                });
+            });
+        }
+
+        // Масштаб
+        if (settingsAspectOpts) {
+            settingsAspectOpts.querySelectorAll('.settings-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    const aspect = chip.dataset.aspect;
+                    setAspect(aspect);
+                });
+            });
+        }
+
+        // PiP
+        if (btnPip) {
+            btnPip.addEventListener('click', () => {
+                togglePiP();
+                closeSettings();
+            });
+        }
+
+        // Таймер сна
+        if (settingsSleepOpts) {
+            settingsSleepOpts.querySelectorAll('.settings-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    const val = chip.dataset.sleep;
+                    setSleepTimer(val);
+                });
+            });
+        }
+    }
+
+    function toggleSettings() {
+        if (settingsSheet.classList.contains('hidden')) {
+            openSettings();
+        } else {
+            closeSettings();
+        }
+    }
+
+    function openSettings() {
+        settingsSheet.classList.remove('hidden');
+        settingsSheet.style.visibility = 'visible';
+        if (settingsBackdrop) settingsBackdrop.classList.remove('hidden');
+        clearTimeout(controlsTimeout); // не скрывать контролы пока открыты настройки
+    }
+
+    function closeSettings() {
+        settingsSheet.classList.add('hidden');
+        setTimeout(() => {
+            if (settingsSheet.classList.contains('hidden')) {
+                settingsSheet.style.visibility = 'hidden';
+            }
+        }, 280);
+        if (settingsBackdrop) settingsBackdrop.classList.add('hidden');
+        showControls();
+    }
+
+    function setSpeed(speed) {
+        video.playbackRate = speed;
+        try { video.preservesPitch = true; } catch {}
+        localStorage.setItem('cinema_preferred_speed', String(speed));
+
+        if (settingsSpeedOpts) {
+            settingsSpeedOpts.querySelectorAll('.settings-chip').forEach(c => {
+                c.classList.toggle('active', parseFloat(c.dataset.speed) === speed);
+            });
+        }
+    }
+
+    function setAspect(aspect) {
+        video.style.objectFit = aspect;
+        localStorage.setItem('cinema_preferred_aspect', aspect);
+
+        if (settingsAspectOpts) {
+            settingsAspectOpts.querySelectorAll('.settings-chip').forEach(c => {
+                c.classList.toggle('active', c.dataset.aspect === aspect);
+            });
+        }
+    }
+
+    function setBalancer(source) {
+        localStorage.setItem('cinema_preferred_balancer', source);
+        if (settingsBalancerOpts) {
+            settingsBalancerOpts.querySelectorAll('.settings-chip').forEach(c => {
+                c.classList.toggle('active', c.dataset.source === source);
+            });
+        }
+        closeSettings();
+        window.dispatchEvent(new CustomEvent('change-balancer', { detail: { source } }));
+    }
+
+    async function togglePiP() {
+        try {
+            if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+            } else if (video.requestPictureInPicture) {
+                await video.requestPictureInPicture();
+            } else if (typeof video.webkitSetPresentationMode === 'function') {
+                const mode = video.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture';
+                video.webkitSetPresentationMode(mode);
+            }
+        } catch (e) {
+            console.warn('[PiP error]:', e);
+        }
+    }
+
+    function setSleepTimer(val) {
+        if (sleepTimerTimeout) {
+            clearTimeout(sleepTimerTimeout);
+            sleepTimerTimeout = null;
+        }
+        sleepOnEnd = false;
+
+        if (settingsSleepOpts) {
+            settingsSleepOpts.querySelectorAll('.settings-chip').forEach(c => {
+                c.classList.toggle('active', c.dataset.sleep === val);
+            });
+        }
+
+        if (val === '0') return;
+
+        if (val === 'end') {
+            sleepOnEnd = true;
+            return;
+        }
+
+        const mins = parseInt(val, 10);
+        if (mins > 0) {
+            sleepTimerTimeout = setTimeout(() => {
+                video.pause();
+                close();
+            }, mins * 60 * 1000);
+        }
     }
 
     // ─── Публичные методы ───
@@ -126,7 +318,7 @@ const CinemaPlayer = (() => {
     function open(opts) {
         currentStreams = opts.streams || {};
         audioTrackNames = opts.audioTracks || [];
-        
+
         currentState = {
             filmId: opts.filmId,
             filmUrl: opts.filmUrl || '',
@@ -135,6 +327,7 @@ const CinemaPlayer = (() => {
             type: opts.type || 'movie',
             season: opts.season || null,
             episode: opts.episode || null,
+            episodeTitle: opts.episodeTitle || '',
             translatorId: opts.translatorId ?? 0,
             translatorName: opts.translatorName || '',
         };
@@ -145,14 +338,35 @@ const CinemaPlayer = (() => {
             return;
         }
 
-        // Заголовок
+        // Показ / скрытие кнопок серий
+        const isSeries = currentState.type === 'series';
+        if (btnPrevEp) btnPrevEp.classList.toggle('hidden', !isSeries);
+        if (btnNextEp) btnNextEp.classList.toggle('hidden', !isSeries);
+        if (btnNextCountdown) btnNextCountdown.classList.add('hidden');
+
+        // Заголовок в плеере
         let titleText = currentState.title;
-        if (currentState.type === 'series' && currentState.season && currentState.episode) {
-            titleText += ` — S${currentState.season}E${currentState.episode}`;
+        if (isSeries && currentState.season && currentState.episode) {
+            titleText += ` · С${currentState.season}:Э${currentState.episode}`;
+            if (currentState.episodeTitle) {
+                titleText += ` «${currentState.episodeTitle}»`;
+            }
         }
         playerTitle.textContent = titleText;
-        btnQuality.textContent = 'Авто';
-        btnAudio.textContent = currentState.translatorName || 'Озвучка';
+
+        // Восстановление сохранённых настроек пользователя
+        const savedSpeed = parseFloat(localStorage.getItem('cinema_preferred_speed') || '1');
+        setSpeed(savedSpeed);
+
+        const savedAspect = localStorage.getItem('cinema_preferred_aspect') || 'contain';
+        setAspect(savedAspect);
+
+        const savedBalancer = localStorage.getItem('cinema_preferred_balancer') || 'collaps';
+        if (settingsBalancerOpts) {
+            settingsBalancerOpts.querySelectorAll('.settings-chip').forEach(c => {
+                c.classList.toggle('active', c.dataset.source === savedBalancer);
+            });
+        }
 
         // Показать экран
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -171,6 +385,10 @@ const CinemaPlayer = (() => {
     function close() {
         saveProgress();
         clearInterval(saveInterval);
+        if (sleepTimerTimeout) {
+            clearTimeout(sleepTimerTimeout);
+            sleepTimerTimeout = null;
+        }
 
         video.pause();
         video.removeAttribute('src');
@@ -178,8 +396,7 @@ const CinemaPlayer = (() => {
         if (hls) { hls.destroy(); hls = null; }
 
         screen.classList.remove('active');
-        qualityModal.classList.add('hidden');
-        audioModal.classList.add('hidden');
+        closeSettings();
 
         try { document.exitFullscreen?.() || document.webkitExitFullscreen?.(); } catch {}
 
@@ -209,7 +426,8 @@ const CinemaPlayer = (() => {
                 maxBufferLength: 30,
                 maxMaxBufferLength: 60,
                 startLevel: -1,
-                capLevelToPlayerSize: true,
+                capLevelToPlayerSize: false, // ВАЖНО: false, чтобы 1080p не сбрасывалось на 720p!
+                autoStartLoad: true,
             });
 
             hls.loadSource(url);
@@ -222,12 +440,8 @@ const CinemaPlayer = (() => {
 
             hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (event, data) => {
                 buildAudioMenu(hls.audioTracks);
-                // Устанавливаем сохраненную озвучку если есть
                 if (typeof currentState.translatorId === 'number' && hls.audioTracks[currentState.translatorId]) {
                     hls.audioTrack = currentState.translatorId;
-                    if (audioTrackNames[currentState.translatorId]) {
-                        btnAudio.textContent = audioTrackNames[currentState.translatorId];
-                    }
                 }
             });
 
@@ -239,7 +453,7 @@ const CinemaPlayer = (() => {
                 }
             });
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            // Safari iOS
+            // Safari iOS (родная поддержка HLS)
             video.src = url;
             video.addEventListener('loadedmetadata', () => {
                 if (audioTrackNames && audioTrackNames.length > 0) {
@@ -256,60 +470,80 @@ const CinemaPlayer = (() => {
     }
 
     function buildQualityMenu(levels) {
-        qualityOptions.innerHTML = '';
+        if (!settingsQualityOpts) return;
+        settingsQualityOpts.innerHTML = '';
 
-        // Опция "Авто"
+        const preferredQuality = localStorage.getItem('cinema_preferred_quality') || 'auto';
+
+        // Кнопка "Авто"
         const autoBtn = document.createElement('button');
-        autoBtn.className = 'modal-option active';
-        autoBtn.textContent = 'Авто (рекомендуется)';
+        autoBtn.className = 'settings-chip' + (preferredQuality === 'auto' ? ' active' : '');
+        autoBtn.textContent = 'Авто (Макс)';
         autoBtn.addEventListener('click', () => {
             if (hls) hls.currentLevel = -1;
-            btnQuality.textContent = 'Авто';
-            qualityOptions.querySelectorAll('.modal-option').forEach(o => o.classList.remove('active'));
+            localStorage.setItem('cinema_preferred_quality', 'auto');
+            settingsQualityOpts.querySelectorAll('.settings-chip').forEach(c => c.classList.remove('active'));
             autoBtn.classList.add('active');
-            qualityModal.classList.add('hidden');
         });
-        qualityOptions.appendChild(autoBtn);
+        settingsQualityOpts.appendChild(autoBtn);
 
         if (!levels || levels.length === 0) return;
 
-        // Сортируем от высшего к низшему
-        const sortedLevels = levels.map((lvl, idx) => ({ lvl, idx }))
-                                   .sort((a, b) => (b.lvl.height || 0) - (a.lvl.height || 0));
+        // Сортируем уровни от 1080p к 360p
+        const sorted = levels.map((lvl, idx) => ({ lvl, idx }))
+                             .sort((a, b) => (b.lvl.height || 0) - (a.lvl.height || 0));
 
-        sortedLevels.forEach(({ lvl, idx }) => {
-            const h = lvl.height || (idx === 0 ? 1080 : 720);
+        let applied = false;
+
+        sorted.forEach(({ lvl, idx }) => {
+            const h = lvl.height || 1080;
             const label = `${h}p`;
+            const isMatch = (preferredQuality === label);
+
             const btn = document.createElement('button');
-            btn.className = 'modal-option';
+            btn.className = 'settings-chip' + (isMatch ? ' active' : '');
             btn.textContent = label;
+
             btn.addEventListener('click', () => {
                 if (hls) hls.currentLevel = idx;
-                btnQuality.textContent = label;
-                qualityOptions.querySelectorAll('.modal-option').forEach(o => o.classList.remove('active'));
+                localStorage.setItem('cinema_preferred_quality', label);
+                settingsQualityOpts.querySelectorAll('.settings-chip').forEach(c => c.classList.remove('active'));
                 btn.classList.add('active');
-                qualityModal.classList.add('hidden');
             });
-            qualityOptions.appendChild(btn);
+
+            if (isMatch && hls) {
+                hls.currentLevel = idx;
+                applied = true;
+            }
+
+            settingsQualityOpts.appendChild(btn);
         });
+
+        // Если было 'auto' или не найдено совпадение — ставим -1 (наилучшее адаптивное качество)
+        if (!applied && hls && preferredQuality !== 'auto') {
+            hls.currentLevel = -1;
+        }
     }
 
     function buildAudioMenu(tracks) {
-        audioOptions.innerHTML = '';
+        if (!settingsAudioOpts) return;
+        settingsAudioOpts.innerHTML = '';
+
         if (!tracks || tracks.length === 0) {
-            btnAudio.classList.add('hidden');
+            const emptyLabel = document.createElement('span');
+            emptyLabel.className = 'settings-chip';
+            emptyLabel.textContent = currentState.translatorName || 'Основная';
+            settingsAudioOpts.appendChild(emptyLabel);
             return;
         }
-        btnAudio.classList.remove('hidden');
 
         tracks.forEach((track, idx) => {
             const name = (audioTrackNames && audioTrackNames[idx]) ? audioTrackNames[idx] : (track.name || `Дорожка ${idx + 1}`);
             const btn = document.createElement('button');
-            btn.className = 'modal-option';
-            if (idx === (hls ? hls.audioTrack : currentState.translatorId)) {
-                btn.classList.add('active');
-            }
+            const isActive = (idx === (hls ? hls.audioTrack : currentState.translatorId));
+            btn.className = 'settings-chip' + (isActive ? ' active' : '');
             btn.textContent = name;
+
             btn.addEventListener('click', () => {
                 if (hls) {
                     hls.audioTrack = idx;
@@ -320,13 +554,12 @@ const CinemaPlayer = (() => {
                 }
                 currentState.translatorId = idx;
                 currentState.translatorName = name;
-                btnAudio.textContent = name;
-                audioOptions.querySelectorAll('.modal-option').forEach(o => o.classList.remove('active'));
+                settingsAudioOpts.querySelectorAll('.settings-chip').forEach(c => c.classList.remove('active'));
                 btn.classList.add('active');
-                audioModal.classList.add('hidden');
                 saveProgress();
             });
-            audioOptions.appendChild(btn);
+
+            settingsAudioOpts.appendChild(btn);
         });
     }
 
@@ -374,12 +607,17 @@ const CinemaPlayer = (() => {
 
     function onVideoEnded() {
         showControls();
-        window.dispatchEvent(new CustomEvent('episode-ended', {
-            detail: { season: currentState.season, episode: currentState.episode }
-        }));
+        if (sleepOnEnd) {
+            close();
+            return;
+        }
+        // Автоматический переход на след. серию
+        if (currentState.type === 'series') {
+            window.dispatchEvent(new CustomEvent('episode-next'));
+        }
     }
 
-    // ─── Двойной тап ───
+    // ─── Двойной тап ±10с ───
 
     function handleDoubleTap(side) {
         tapCount++;
@@ -392,7 +630,7 @@ const CinemaPlayer = (() => {
 
             const ripple = (side === 'left' ? tapLeft : tapRight).querySelector('.tap-ripple');
             ripple.classList.add('show');
-            setTimeout(() => ripple.classList.remove('show'), 500);
+            setTimeout(() => ripple.classList.remove('show'), 450);
 
             tapCount = 0;
         } else {
@@ -403,7 +641,7 @@ const CinemaPlayer = (() => {
         }
     }
 
-    // ─── Прогресс-бар ───
+    // ─── Прогресс-бар и авто-переход ───
 
     function onTimeUpdate() {
         if (isDragging || !video.duration) return;
@@ -411,6 +649,18 @@ const CinemaPlayer = (() => {
         progressPlayed.style.width = pct + '%';
         progressHandle.style.left = pct + '%';
         timeCurrent.textContent = formatTime(video.currentTime);
+
+        // Логика плавающей кнопки «Следующая серия (10с) ▶»
+        if (currentState.type === 'series' && btnNextCountdown && video.duration > 30) {
+            const remaining = video.duration - video.currentTime;
+            if (remaining <= 10 && remaining > 0.5) {
+                const secs = Math.ceil(remaining);
+                nextCountdownText.textContent = `Следующая серия (${secs}с)`;
+                btnNextCountdown.classList.remove('hidden');
+            } else {
+                btnNextCountdown.classList.add('hidden');
+            }
+        }
     }
 
     function onMetadataLoaded() {
@@ -459,7 +709,7 @@ const CinemaPlayer = (() => {
     function showControls() {
         overlay.classList.remove('hidden-controls');
         clearTimeout(controlsTimeout);
-        if (!video.paused) {
+        if (!video.paused && settingsSheet.classList.contains('hidden')) {
             controlsTimeout = setTimeout(() => {
                 overlay.classList.add('hidden-controls');
             }, 3500);
@@ -467,6 +717,10 @@ const CinemaPlayer = (() => {
     }
 
     function toggleControls() {
+        if (!settingsSheet.classList.contains('hidden')) {
+            closeSettings();
+            return;
+        }
         if (overlay.classList.contains('hidden-controls')) {
             showControls();
         } else {
@@ -476,13 +730,13 @@ const CinemaPlayer = (() => {
     }
 
     function toggleFullscreen() {
-        // 1. Приоритет для iPhone / iPad (открывает родной системный плеер iOS)
+        // 1. Для iPhone / iPad родной системный плеер iOS
         if (typeof video.webkitEnterFullscreen === 'function') {
             try {
                 video.webkitEnterFullscreen();
                 return;
             } catch (e) {
-                console.warn('[iOS] webkitEnterFullscreen fallback:', e);
+                console.warn('[iOS] webkitEnterFullscreen:', e);
             }
         }
 
@@ -508,7 +762,7 @@ const CinemaPlayer = (() => {
         }
     }
 
-    // ─── Сохранение ───
+    // ─── Сохранение прогресса ───
 
     function saveProgress() {
         if (!currentState.filmId || !video.duration) return;
@@ -530,5 +784,5 @@ const CinemaPlayer = (() => {
 
     init();
 
-    return { open, close, saveProgress };
+    return { open, close, saveProgress, setSpeed, setAspect, togglePiP };
 })();

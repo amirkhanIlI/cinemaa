@@ -1,45 +1,47 @@
 /**
- * app.js — Основная логика приложения Clean Cinema.
+ * app.js — Основная логика приложения Clean Cinema V2
  *
  * Управляет навигацией между экранами, поиском, отображением деталей,
- * выбором озвучек/сезонов/серий и запуском плеера.
+ * названиями серий (TMDB), переключением балансеров (Collaps, Kodik, Rezka),
+ * мгновенным запуском из «Продолжить просмотр» и автопереходом серий.
  */
 
 const CinemaApp = (() => {
-    // ─── DOM ───
-    const screenHome     = document.getElementById('screen-home');
-    const screenDetails  = document.getElementById('screen-details');
-    const searchInput    = document.getElementById('search-input');
-    const searchClear    = document.getElementById('search-clear');
+    // ─── DOM элементы ───
+    const screenHome      = document.getElementById('screen-home');
+    const screenDetails   = document.getElementById('screen-details');
+    const searchInput     = document.getElementById('search-input');
+    const searchClear     = document.getElementById('search-clear');
     const continueSection = document.getElementById('continue-section');
-    const continueList   = document.getElementById('continue-list');
-    const resultsSection = document.getElementById('results-section');
-    const resultsList    = document.getElementById('results-list');
-    const emptyState     = document.getElementById('empty-state');
-    const spinner        = document.getElementById('loading-spinner');
+    const continueList    = document.getElementById('continue-list');
+    const resultsSection  = document.getElementById('results-section');
+    const resultsList     = document.getElementById('results-list');
+    const emptyState      = document.getElementById('empty-state');
+    const spinner         = document.getElementById('loading-spinner');
 
-    const btnBack        = document.getElementById('btn-back');
-    const detailsTitle   = document.getElementById('details-title');
-    const detailsPoster  = document.getElementById('details-poster');
-    const detailsYear    = document.getElementById('details-year');
-    const detailsRating  = document.getElementById('details-rating');
-    const detailsType    = document.getElementById('details-type');
-    const detailsOrigTitle = document.getElementById('details-orig-title');
-    const detailsDesc    = document.getElementById('details-description');
+    const btnBack         = document.getElementById('btn-back');
+    const detailsTitle    = document.getElementById('details-title');
+    const detailsPoster   = document.getElementById('details-poster');
+    const detailsYear     = document.getElementById('details-year');
+    const detailsRating   = document.getElementById('details-rating');
+    const detailsType     = document.getElementById('details-type');
+    const detailsOrigTitle= document.getElementById('details-orig-title');
+    const detailsDesc     = document.getElementById('details-description');
     const translatorsList = document.getElementById('translators-list');
-    const seasonsSection = document.getElementById('seasons-section');
-    const seasonsList    = document.getElementById('seasons-list');
+    const seasonsSection  = document.getElementById('seasons-section');
+    const seasonsList     = document.getElementById('seasons-list');
     const episodesSection = document.getElementById('episodes-section');
-    const episodesList   = document.getElementById('episodes-list');
-    const btnPlayMovie   = document.getElementById('btn-play-movie');
-    const qualityOptions = document.getElementById('quality-options');
+    const episodesList    = document.getElementById('episodes-list');
+    const btnPlayMovie    = document.getElementById('btn-play-movie');
 
     // ─── Состояние ───
-    let currentDetails = null;   // MediaDetails из API
+    let currentDetails     = null; // MediaDetails из API
     let selectedTranslator = null;
-    let selectedSeason = null;
-    let selectedEpisode = null;
-    let searchTimeout = null;
+    let selectedSeason     = null;
+    let selectedEpisode    = null;
+    let searchTimeout      = null;
+    let episodeNamesCache  = {};   // { [season]: { [episode]: "Title" } }
+    let pendingResume      = null; // объект для мгновенного запуска из истории
 
     // ─── Инициализация ───
 
@@ -50,7 +52,7 @@ const CinemaApp = (() => {
             searchClear.classList.toggle('hidden', !q);
             clearTimeout(searchTimeout);
             if (q.length >= 2) {
-                searchTimeout = setTimeout(() => doSearch(q), 400);
+                searchTimeout = setTimeout(() => doSearch(q), 350);
             } else {
                 resultsSection.classList.add('hidden');
                 emptyState.classList.toggle('hidden', continueList.children.length > 0);
@@ -65,7 +67,7 @@ const CinemaApp = (() => {
             searchInput.focus();
         });
 
-        // Кнопка Назад (из деталей)
+        // Кнопка Назад (из деталей на главную)
         btnBack.addEventListener('click', showHome);
 
         // Кнопка «Смотреть» (для фильмов)
@@ -75,17 +77,29 @@ const CinemaApp = (() => {
             }
         });
 
-        // При закрытии плеера — обновить «Продолжить»
+        // События плеера
         window.addEventListener('player-closed', () => {
             loadContinueWatching();
+            // Обновляем выделение серий на экране деталей
+            if (currentDetails && currentDetails.type === 'series') {
+                highlightWatchedEpisodes();
+            }
         });
 
-        // Автопереход на следующую серию
-        window.addEventListener('episode-ended', (e) => {
-            const { season, episode } = e.detail;
-            if (currentDetails && currentDetails.type === 'series') {
-                playNextEpisode(season, episode);
-            }
+        // Переход на следующую серию
+        window.addEventListener('episode-next', () => {
+            playNextEpisode();
+        });
+
+        // Переход на предыдущую серию
+        window.addEventListener('episode-prev', () => {
+            playPrevEpisode();
+        });
+
+        // Переключение балансера из шторки ⚙️
+        window.addEventListener('change-balancer', (e) => {
+            const newSource = e.detail?.source || 'collaps';
+            playStream(newSource);
         });
 
         // Синхронизация и загрузка истории
@@ -154,7 +168,7 @@ const CinemaApp = (() => {
         return card;
     }
 
-    // ─── Клиентский фоллбэк на Collaps CDN (для обхода блокировки серверных IP / 410) ───
+    // ─── Клиентский фоллбэк на Collaps CDN (обход 410 / датацентров) ───
 
     async function fetchCollapsHtml(imdbId) {
         try {
@@ -289,9 +303,31 @@ const CinemaApp = (() => {
         };
     }
 
-    // ─── Детали фильма ───
+    // ─── Загрузка названий серий из TMDB ───
 
-    async function openDetails(url) {
+    async function loadEpisodeNames(tvId, season) {
+        if (!tvId || !season) return;
+        const cacheKey = `${tvId}_s${season}`;
+        if (episodeNamesCache[cacheKey]) return episodeNamesCache[cacheKey];
+
+        try {
+            const resp = await fetch(`/api/episodes?tv_id=${encodeURIComponent(tvId)}&season=${season}`);
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.episodes) {
+                    episodeNamesCache[cacheKey] = data.episodes;
+                    return data.episodes;
+                }
+            }
+        } catch (e) {
+            console.warn('[TMDB episodes] load failed:', e);
+        }
+        return {};
+    }
+
+    // ─── Детали фильма / сериала ───
+
+    async function openDetails(url, autoPlayResume = false) {
         showDetails();
         spinner.classList.remove('hidden');
 
@@ -300,8 +336,7 @@ const CinemaApp = (() => {
             const data = await resp.json();
             currentDetails = data;
 
-            // Если сервер вернул пустые сезоны или стандартную заглушку (из-за блокировки 410 серверного IP),
-            // парсим сезоны и озвучки напрямую из браузера
+            // Если пустые сезоны из-за 410 Render IP, парсим через клиентский браузер
             if (data.imdb_id && ((data.type === 'series' && (!data.seasons || Object.keys(data.seasons).length === 0)) || (!data.translators || data.translators.length <= 1))) {
                 await enrichDetailsClientSide(data);
             }
@@ -320,8 +355,7 @@ const CinemaApp = (() => {
             translatorsList.innerHTML = '';
             selectedTranslator = null;
             if (data.translators && data.translators.length > 0) {
-                // Проверяем сохранённую озвучку
-                const saved = CinemaStorage.get(data.id);
+                const saved = pendingResume || CinemaStorage.get(data.id);
                 const savedTid = saved ? saved.translatorId : null;
 
                 for (const t of data.translators) {
@@ -332,7 +366,6 @@ const CinemaApp = (() => {
 
                     chip.addEventListener('click', () => selectTranslator(t));
 
-                    // Выбираем сохранённую или первую
                     if (t.id === savedTid || (!savedTid && !selectedTranslator)) {
                         chip.classList.add('active');
                         selectedTranslator = t;
@@ -342,17 +375,26 @@ const CinemaApp = (() => {
                 }
             }
 
-            // Сезоны/серии
+            // Сезоны и серии
             if (data.type === 'series' && data.seasons && Object.keys(data.seasons).length > 0) {
                 seasonsSection.classList.remove('hidden');
                 episodesSection.classList.remove('hidden');
                 btnPlayMovie.classList.add('hidden');
 
-                renderSeasons(data.seasons);
+                await renderSeasons(data.seasons);
             } else {
                 seasonsSection.classList.add('hidden');
                 episodesSection.classList.add('hidden');
                 btnPlayMovie.classList.remove('hidden');
+            }
+
+            // Мгновенный запуск при клике из «Продолжить просмотр»
+            if (autoPlayResume && pendingResume) {
+                const resumeTarget = pendingResume;
+                pendingResume = null;
+                if (resumeTarget.season) selectedSeason = resumeTarget.season;
+                if (resumeTarget.episode) selectedEpisode = resumeTarget.episode;
+                playStream();
             }
         } catch (e) {
             console.error('Details failed:', e);
@@ -368,12 +410,11 @@ const CinemaApp = (() => {
         });
     }
 
-    function renderSeasons(seasons) {
+    async function renderSeasons(seasons) {
         seasonsList.innerHTML = '';
         const keys = Object.keys(seasons).sort((a, b) => parseInt(a) - parseInt(b));
 
-        // Восстанавливаем сохранённый сезон
-        const saved = CinemaStorage.get(currentDetails.id);
+        const saved = pendingResume || CinemaStorage.get(currentDetails.id);
         const savedSeason = saved ? saved.season : null;
         let firstSeason = savedSeason && keys.includes(String(savedSeason))
                         ? String(savedSeason)
@@ -385,11 +426,11 @@ const CinemaApp = (() => {
             chip.textContent = `Сезон ${sKey}`;
             chip.dataset.season = sKey;
 
-            chip.addEventListener('click', () => {
+            chip.addEventListener('click', async () => {
                 selectedSeason = parseInt(sKey);
                 seasonsList.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
                 chip.classList.add('active');
-                renderEpisodes(seasons[sKey]);
+                await renderEpisodes(seasons[sKey]);
             });
 
             if (sKey === firstSeason) {
@@ -400,16 +441,20 @@ const CinemaApp = (() => {
             seasonsList.appendChild(chip);
         }
 
-        // Показать серии первого сезона
         if (firstSeason && seasons[firstSeason]) {
-            renderEpisodes(seasons[firstSeason]);
+            await renderEpisodes(seasons[firstSeason]);
         }
     }
 
-    function renderEpisodes(episodes) {
+    async function renderEpisodes(episodes) {
         episodesList.innerHTML = '';
-        const saved = CinemaStorage.get(currentDetails.id);
+        const saved = pendingResume || CinemaStorage.get(currentDetails.id);
         const savedEp = saved ? saved.episode : null;
+
+        // Предзагрузка названий серий из TMDB в фоне
+        if (currentDetails && currentDetails.id) {
+            loadEpisodeNames(currentDetails.id, selectedSeason);
+        }
 
         for (const ep of episodes) {
             const btn = document.createElement('button');
@@ -417,11 +462,9 @@ const CinemaApp = (() => {
             btn.textContent = ep;
             btn.dataset.episode = ep;
 
-            // Пометить просмотренные серии
-            const watchKey = `${currentDetails.id}_s${selectedSeason}_e${ep}`;
-            const epSaved = CinemaStorage.get(currentDetails.id);
-            if (epSaved && epSaved.season == selectedSeason && epSaved.episode == ep && epSaved.time > 10) {
-                btn.classList.add('watched');
+            if (saved && saved.season == selectedSeason && saved.episode == ep) {
+                btn.classList.add('active');
+                selectedEpisode = ep;
             }
 
             btn.addEventListener('click', () => {
@@ -433,19 +476,39 @@ const CinemaApp = (() => {
 
             episodesList.appendChild(btn);
         }
+
+        highlightWatchedEpisodes();
+    }
+
+    function highlightWatchedEpisodes() {
+        if (!currentDetails || !episodesList) return;
+        const saved = CinemaStorage.get(currentDetails.id);
+        if (!saved) return;
+
+        episodesList.querySelectorAll('.episode-btn').forEach(btn => {
+            const ep = parseInt(btn.dataset.episode);
+            if (saved.season == selectedSeason && saved.episode == ep && saved.time > 10) {
+                btn.classList.add('watched');
+            }
+        });
     }
 
     // ─── Запуск потока ───
 
-    async function playStream() {
-        if (!selectedTranslator || !currentDetails) return;
+    async function playStream(preferredSource = null) {
+        if (!currentDetails) return;
+        if (!selectedTranslator && currentDetails.translators?.length > 0) {
+            selectedTranslator = currentDetails.translators[0];
+        }
 
         spinner.classList.remove('hidden');
+
+        const source = preferredSource || localStorage.getItem('cinema_preferred_balancer') || 'collaps';
 
         try {
             let data = null;
             try {
-                let url = `/api/stream?url=${encodeURIComponent(currentDetails.url)}&translator_id=${selectedTranslator.id}`;
+                let url = `/api/stream?url=${encodeURIComponent(currentDetails.url)}&translator_id=${selectedTranslator ? selectedTranslator.id : 0}&source=${source}`;
                 if (currentDetails.type === 'series' && selectedSeason && selectedEpisode) {
                     url += `&season=${selectedSeason}&episode=${selectedEpisode}`;
                 }
@@ -456,9 +519,8 @@ const CinemaApp = (() => {
                 console.warn('Backend stream request failed:', err);
             }
 
-            // Если сервер вернул 410 (блокировка серверного IP в облаке) или ошибку,
-            // запускаем резервное прямое извлечение из браузера клиента
-            if (!data || data.error || !data.streams || Object.keys(data.streams).length === 0) {
+            // Фоллбэк на прямой клиентский парсинг Collaps при ошибках сервера / 410
+            if (source === 'collaps' && (!data || data.error || !data.streams || Object.keys(data.streams).length === 0)) {
                 if (currentDetails.imdb_id) {
                     console.log('[Collaps Client] Falling back to direct client-side stream extraction...');
                     const clientStream = await fetchClientSideStream(
@@ -475,19 +537,27 @@ const CinemaApp = (() => {
             }
 
             if (!data || data.error) {
-                alert('Ошибка: ' + (data ? data.error : 'Не удалось получить видеопоток'));
+                const errMsg = data?.error || 'Не удалось получить видеопоток';
+                alert('Ошибка источника: ' + errMsg + '\nПопробуйте выбрать другой источник в настройках ⚙️.');
                 return;
             }
 
             if (!data.streams || Object.keys(data.streams).length === 0) {
-                alert('Видеопотоки не найдены. Попробуйте другую озвучку.');
+                alert('Видеопотоки не найдены. Попробуйте другую озвучку или источник.');
                 return;
             }
 
-            // Обновить модалку качества
-            renderQualityOptions(data.streams);
+            // Получаем красивое название серии (если сериал)
+            let epTitle = '';
+            if (currentDetails.type === 'series' && selectedSeason && selectedEpisode) {
+                const cacheKey = `${currentDetails.id}_s${selectedSeason}`;
+                const eps = episodeNamesCache[cacheKey];
+                if (eps && eps[String(selectedEpisode)]) {
+                    epTitle = eps[String(selectedEpisode)].name || '';
+                }
+            }
 
-            // Запуск плеера
+            // Запуск плеера Clean Cinema V2
             CinemaPlayer.open({
                 streams: data.streams,
                 hls_url: data.hls_url,
@@ -499,6 +569,7 @@ const CinemaApp = (() => {
                 type: currentDetails.type,
                 season: selectedSeason,
                 episode: selectedEpisode,
+                episodeTitle: epTitle,
                 translatorId: selectedTranslator ? selectedTranslator.id : 0,
                 translatorName: selectedTranslator ? selectedTranslator.name : '',
             });
@@ -510,52 +581,54 @@ const CinemaApp = (() => {
         }
     }
 
-    function renderQualityOptions(streams) {
-        qualityOptions.innerHTML = '';
-        const qualities = Object.keys(streams);
-        // Сортируем: 360p, 480p, 720p, 1080p, 1080p Ultra
-        qualities.sort((a, b) => {
-            const numA = parseInt(a) || 0;
-            const numB = parseInt(b) || 0;
-            return numA - numB;
-        });
+    // ─── Переключение серий (следующая / предыдущая) ───
 
-        for (const q of qualities) {
-            const btn = document.createElement('button');
-            btn.className = 'modal-option';
-            btn.textContent = q;
-            btn.addEventListener('click', () => {
-                qualityOptions.querySelectorAll('.modal-option').forEach(o => o.classList.remove('active'));
-                btn.classList.add('active');
-                CinemaPlayer.switchQuality(q);
-            });
-            if (q === '720p') btn.classList.add('active');
-            qualityOptions.appendChild(btn);
-        }
-    }
-
-    // ─── Автопереход на следующую серию ───
-
-    function playNextEpisode(currentSeason, currentEpisode) {
-        if (!currentDetails || !currentDetails.seasons) return;
+    function playNextEpisode() {
+        if (!currentDetails || !currentDetails.seasons || !selectedSeason || !selectedEpisode) return;
 
         const seasons = currentDetails.seasons;
-        const sKey = String(currentSeason);
+        const sKey = String(selectedSeason);
         const episodes = seasons[sKey] || [];
-        const idx = episodes.indexOf(currentEpisode);
+        const idx = episodes.indexOf(selectedEpisode);
 
         if (idx >= 0 && idx < episodes.length - 1) {
-            // Следующая серия в том же сезоне
             selectedEpisode = episodes[idx + 1];
             playStream();
         } else {
-            // Следующий сезон
+            // Переход на следующий сезон
             const sKeys = Object.keys(seasons).sort((a, b) => parseInt(a) - parseInt(b));
             const sIdx = sKeys.indexOf(sKey);
             if (sIdx >= 0 && sIdx < sKeys.length - 1) {
                 const nextSeason = sKeys[sIdx + 1];
                 selectedSeason = parseInt(nextSeason);
                 selectedEpisode = seasons[nextSeason][0] || 1;
+                playStream();
+            } else {
+                alert('Сезон завершён 🎉');
+            }
+        }
+    }
+
+    function playPrevEpisode() {
+        if (!currentDetails || !currentDetails.seasons || !selectedSeason || !selectedEpisode) return;
+
+        const seasons = currentDetails.seasons;
+        const sKey = String(selectedSeason);
+        const episodes = seasons[sKey] || [];
+        const idx = episodes.indexOf(selectedEpisode);
+
+        if (idx > 0) {
+            selectedEpisode = episodes[idx - 1];
+            playStream();
+        } else {
+            // Переход на предыдущий сезон
+            const sKeys = Object.keys(seasons).sort((a, b) => parseInt(a) - parseInt(b));
+            const sIdx = sKeys.indexOf(sKey);
+            if (sIdx > 0) {
+                const prevSeason = sKeys[sIdx - 1];
+                selectedSeason = parseInt(prevSeason);
+                const prevEps = seasons[prevSeason] || [];
+                selectedEpisode = prevEps[prevEps.length - 1] || 1;
                 playStream();
             }
         }
@@ -606,15 +679,16 @@ const CinemaApp = (() => {
             </div>
         `;
 
-        // Клик по карточке — открыть и продолжить
+        // Клик по карточке — мгновенный запуск прямо на сохранённом моменте!
         card.addEventListener('click', (e) => {
             if (e.target.closest('.continue-card-delete')) return;
             if (item.filmUrl) {
-                openDetails(item.filmUrl);
+                pendingResume = item;
+                openDetails(item.filmUrl, true);
             }
         });
 
-        // Кнопка удаления
+        // Кнопка удаления из истории
         const delBtn = card.querySelector('.continue-card-delete');
         delBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -622,6 +696,9 @@ const CinemaApp = (() => {
             card.remove();
             if (continueList.children.length === 0) {
                 continueSection.classList.add('hidden');
+                if (resultsSection.classList.contains('hidden')) {
+                    emptyState.classList.remove('hidden');
+                }
             }
         });
 
@@ -653,8 +730,7 @@ const CinemaApp = (() => {
         return `${m}:${s.toString().padStart(2, '0')}`;
     }
 
-    // Запуск
     init();
 
-    return { openDetails, showHome, loadContinueWatching };
+    return { openDetails, showHome, loadContinueWatching, playStream };
 })();

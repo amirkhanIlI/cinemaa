@@ -10,7 +10,7 @@
     <link rel="manifest" href="/static/manifest.json">
     <link rel="icon" href="/static/icons/icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-    <link rel="stylesheet" href="/static/css/style.css?v=4">
+    <link rel="stylesheet" href="/static/css/style.css?v=5">
     <!-- HLS.js для воспроизведения m3u8 потоков -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
 </head>
@@ -113,16 +113,15 @@
             <div id="player-overlay" class="player-overlay">
                 <!-- Верхняя панель -->
                 <div class="player-top-bar">
-                    <button id="btn-player-back" class="btn-icon" aria-label="Назад">
+                    <button id="btn-player-back" class="btn-icon-touch" aria-label="Назад">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="15 18 9 12 15 6"/>
                         </svg>
                     </button>
                     <span id="player-title" class="player-title-text"></span>
                     <div class="player-top-right">
-                        <button id="btn-audio" class="btn-text" aria-label="Озвучка">Озвучка</button>
-                        <button id="btn-quality" class="btn-text" aria-label="Качество">Авто</button>
-                        <button id="btn-native-player" class="btn-text" aria-label="Плеер iPhone">📱 Плеер</button>
+                        <button id="btn-native-player" class="btn-text-touch" aria-label="Плеер iPhone">📱</button>
+                        <button id="btn-settings" class="btn-text-touch" aria-label="Настройки">⚙️</button>
                     </div>
                 </div>
 
@@ -145,9 +144,15 @@
 
                 <!-- Нижняя панель -->
                 <div class="player-bottom-bar">
-                    <button id="btn-play-pause" class="btn-icon-lg" aria-label="Пауза/Воспроизведение">
+                    <button id="btn-prev-ep" class="btn-icon-touch btn-ep-nav" aria-label="Предыдущая серия" title="Предыдущая серия">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+                    </button>
+                    <button id="btn-play-pause" class="btn-play-pause-lg" aria-label="Пауза/Воспроизведение">
                         <svg id="icon-play" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg>
                         <svg id="icon-pause" viewBox="0 0 24 24" fill="currentColor" class="hidden"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                    </button>
+                    <button id="btn-next-ep" class="btn-icon-touch btn-ep-nav" aria-label="Следующая серия" title="Следующая серия">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
                     </button>
                     <span id="player-time-current" class="player-time">0:00</span>
                     <div id="player-progress-bar" class="player-progress-bar">
@@ -156,7 +161,7 @@
                         <div id="player-progress-handle" class="progress-handle"></div>
                     </div>
                     <span id="player-time-duration" class="player-time">0:00</span>
-                    <button id="btn-fullscreen" class="btn-icon" aria-label="Полный экран">
+                    <button id="btn-fullscreen" class="btn-icon-touch" aria-label="Полный экран">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
                             <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
@@ -165,7 +170,80 @@
                 </div>
             </div>
 
-            <!-- Модальное окно выбора качества -->
+            <!-- Плавающая кнопка «Следующая серия» (автопереход) -->
+            <button id="btn-next-countdown" class="btn-next-countdown hidden">
+                <span id="next-countdown-text">Следующая серия</span>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+            </button>
+
+            <!-- ===== Шторка настроек (iOS Bottom Sheet) ===== -->
+            <div id="settings-backdrop" class="settings-backdrop hidden"></div>
+            <div id="settings-sheet" class="settings-sheet hidden">
+                <div class="sheet-drag-handle"></div>
+                <h3 class="sheet-title">Настройки</h3>
+
+                <!-- Озвучка -->
+                <div class="settings-group">
+                    <div class="settings-label">🔊 Озвучка</div>
+                    <div id="settings-audio-options" class="settings-options"></div>
+                </div>
+
+                <!-- Качество -->
+                <div class="settings-group">
+                    <div class="settings-label">🎬 Качество</div>
+                    <div id="settings-quality-options" class="settings-options"></div>
+                </div>
+
+                <!-- Скорость -->
+                <div class="settings-group">
+                    <div class="settings-label">⚡ Скорость</div>
+                    <div id="settings-speed-options" class="settings-options">
+                        <button class="settings-chip" data-speed="0.75">0.75x</button>
+                        <button class="settings-chip active" data-speed="1">1x</button>
+                        <button class="settings-chip" data-speed="1.25">1.25x</button>
+                        <button class="settings-chip" data-speed="1.5">1.5x</button>
+                        <button class="settings-chip" data-speed="2">2x</button>
+                    </div>
+                </div>
+
+                <!-- Источник / Балансер -->
+                <div class="settings-group">
+                    <div class="settings-label">📺 Источник видео</div>
+                    <div id="settings-balancer-options" class="settings-options">
+                        <button class="settings-chip active" data-source="collaps">Плеер 1 (Collaps)</button>
+                        <button class="settings-chip" data-source="kodik">Плеер 2 (Kodik)</button>
+                        <button class="settings-chip" data-source="rezka">Плеер 3 (Rezka)</button>
+                    </div>
+                </div>
+
+                <!-- Масштаб -->
+                <div class="settings-group">
+                    <div class="settings-label">📐 Масштаб видео</div>
+                    <div id="settings-aspect-options" class="settings-options">
+                        <button class="settings-chip active" data-aspect="contain">Вписать</button>
+                        <button class="settings-chip" data-aspect="cover">Заполнить экран</button>
+                    </div>
+                </div>
+
+                <!-- PiP -->
+                <div class="settings-group">
+                    <button id="btn-pip" class="settings-action-btn">🖼 Картинка в картинке</button>
+                </div>
+
+                <!-- Таймер сна -->
+                <div class="settings-group">
+                    <div class="settings-label">🌙 Таймер сна</div>
+                    <div id="settings-sleep-options" class="settings-options">
+                        <button class="settings-chip active" data-sleep="0">Выкл</button>
+                        <button class="settings-chip" data-sleep="15">15 мин</button>
+                        <button class="settings-chip" data-sleep="30">30 мин</button>
+                        <button class="settings-chip" data-sleep="45">45 мин</button>
+                        <button class="settings-chip" data-sleep="end">Конец серии</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Модальное окно выбора качества (legacy, скрытое) -->
             <div id="quality-modal" class="modal hidden">
                 <div class="modal-content">
                     <h3>Качество видео</h3>
@@ -173,7 +251,7 @@
                 </div>
             </div>
 
-            <!-- Модальное окно выбора озвучки -->
+            <!-- Модальное окно выбора озвучки (legacy, скрытое) -->
             <div id="audio-modal" class="modal hidden">
                 <div class="modal-content">
                     <h3>Выбор озвучки</h3>
@@ -184,8 +262,8 @@
     </div>
 
     <!-- Скрипты -->
-    <script src="/static/js/storage.js?v=4"></script>
-    <script src="/static/js/player.js?v=4"></script>
-    <script src="/static/js/app.js?v=4"></script>
+    <script src="/static/js/storage.js?v=5"></script>
+    <script src="/static/js/player.js?v=5"></script>
+    <script src="/static/js/app.js?v=5"></script>
 </body>
 </html>

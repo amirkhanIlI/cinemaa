@@ -77,6 +77,20 @@ async def api_details(url: str = Query(...)):
 
 
 # ---------------------------------------------------------------------------
+# API — Метаданные эпизодов (названия, описания, хронометраж)
+# ---------------------------------------------------------------------------
+@app.get("/api/episodes")
+async def api_episodes(tv_id: str = Query(...), season: int = Query(...)):
+    """Get episode names and metadata from TMDB for a specific season."""
+    try:
+        data = await cinema_source.get_episode_names(tv_id, season)
+        return data
+    except Exception as e:
+        logger.exception("Episodes metadata error")
+        return JSONResponse({"error": str(e)}, status_code=502)
+
+
+# ---------------------------------------------------------------------------
 # API — Получение прямых HLS видеопотоков
 # ---------------------------------------------------------------------------
 @app.get("/api/stream")
@@ -85,8 +99,9 @@ async def api_stream(
     translator_id: int = Query(0),
     season: int | None = Query(None),
     episode: int | None = Query(None),
+    source: str = Query("collaps"),
 ):
-    """Получить прямые ссылки на HLS видеопотоки."""
+    """Get HLS streams. source can be 'collaps', 'kodik', or 'rezka'."""
     try:
         parts = url.strip("/").split("/")
         if len(parts) >= 3 and parts[0] == "details":
@@ -96,13 +111,24 @@ async def api_stream(
             m_type = "movie"
             tmdb_id = url
 
-        stream_data = await cinema_source.get_stream(
-            media_type=m_type,
-            tmdb_id=tmdb_id,
-            translator_id=translator_id,
-            season=season,
-            episode=episode,
-        )
+        if source == "kodik":
+            stream_data = await cinema_source.get_stream_kodik(
+                media_type=m_type, tmdb_id=tmdb_id,
+                translator_id=translator_id, season=season, episode=episode,
+            )
+        elif source == "rezka":
+            stream_data = await cinema_source.get_stream_rezka(
+                media_type=m_type, tmdb_id=tmdb_id,
+                translator_id=translator_id, season=season, episode=episode,
+            )
+        else:
+            stream_data = await cinema_source.get_stream(
+                media_type=m_type,
+                tmdb_id=tmdb_id,
+                translator_id=translator_id,
+                season=season,
+                episode=episode,
+            )
         return stream_data
     except Exception as e:
         logger.exception("Stream error")

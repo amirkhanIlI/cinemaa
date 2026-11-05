@@ -46,6 +46,14 @@ const CinemaApp = (() => {
     // ─── Инициализация ───
 
     function init() {
+        // Автоматическое лечение: если в хранилище застрял неработающий балансер, сразу сбрасываем на collaps
+        try {
+            const savedBal = localStorage.getItem('cinema_preferred_balancer');
+            if (savedBal && savedBal !== 'collaps') {
+                localStorage.setItem('cinema_preferred_balancer', 'collaps');
+            }
+        } catch {}
+
         // Поиск с дебаунсом
         searchInput.addEventListener('input', () => {
             const q = searchInput.value.trim();
@@ -97,9 +105,16 @@ const CinemaApp = (() => {
         });
 
         // Переключение балансера из шторки ⚙️
-        window.addEventListener('change-balancer', (e) => {
+        window.addEventListener('change-balancer', async (e) => {
             const newSource = e.detail?.source || 'collaps';
-            playStream(newSource);
+            const prevSource = CinemaPlayer.getActiveBalancer() || 'collaps';
+            const ok = await playStream(newSource);
+            if (!ok) {
+                // Если не удалось загрузить — возвращаем кнопку на рабочий плеер!
+                CinemaPlayer.setActiveBalancer(prevSource);
+            } else {
+                CinemaPlayer.setActiveBalancer(newSource);
+            }
         });
 
         // Синхронизация и загрузка истории
@@ -536,15 +551,26 @@ const CinemaApp = (() => {
                 }
             }
 
+            // Железный авто-фоллбэк: если kodik или rezka не отдали поток, 
+            // МГНОВЕННО переключаемся на надежный Collaps, чтобы видео ВСЕГДА играло!
+            if (!data || data.error || !data.streams || Object.keys(data.streams).length === 0) {
+                if (source !== 'collaps') {
+                    console.warn(`[Balancer] Source '${source}' failed, auto-falling back to Collaps...`);
+                    try { localStorage.setItem('cinema_preferred_balancer', 'collaps'); } catch {}
+                    if (window.CinemaPlayer) CinemaPlayer.setActiveBalancer('collaps');
+                    return await playStream('collaps');
+                }
+            }
+
             if (!data || data.error) {
                 const errMsg = data?.error || 'Не удалось получить видеопоток';
-                alert('Ошибка источника: ' + errMsg + '\nПопробуйте выбрать другой источник в настройках ⚙️.');
-                return;
+                alert('Ошибка: ' + errMsg);
+                return false;
             }
 
             if (!data.streams || Object.keys(data.streams).length === 0) {
-                alert('Видеопотоки не найдены. Попробуйте другую озвучку или источник.');
-                return;
+                alert('Видеопотоки не найдены. Попробуйте другую озвучку.');
+                return false;
             }
 
             // Получаем красивое название серии (если сериал)
@@ -573,9 +599,11 @@ const CinemaApp = (() => {
                 translatorId: selectedTranslator ? selectedTranslator.id : 0,
                 translatorName: selectedTranslator ? selectedTranslator.name : '',
             });
+            return true;
         } catch (e) {
             console.error('Stream failed:', e);
             alert('Не удалось загрузить поток. Попробуйте позже.');
+            return false;
         } finally {
             spinner.classList.add('hidden');
         }

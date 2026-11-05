@@ -524,12 +524,16 @@ async def get_stream_rezka(
         if not title:
             return {"error": "Не удалось определить название фильма"}
 
+        # Проверяем прямую ссылку из базы
+        direct_url = rezka.KNOWN_SLUGS.get(clean_id)
+
         stream_info = await rezka.get_stream(
             title=title,
             season=season,
             episode=episode,
             translator_id=int_tid,
             preferred_voice=preferred_voice or "TVShows",
+            item_url=direct_url,
         )
         return stream_info
     except Exception as e:

@@ -78,6 +78,7 @@ async def api_debug_rezka():
     try:
         from server.parsers import rezka
         logs["import_rezka"] = "OK"
+        logs["has_curl_cffi"] = rezka.HAS_CURL_CFFI
         client = await rezka._get_client()
         for m in rezka.MIRRORS:
             try:

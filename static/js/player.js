@@ -181,8 +181,14 @@ const CinemaPlayer = (() => {
             settingsBalancerOpts.querySelectorAll('.settings-chip').forEach(chip => {
                 chip.addEventListener('click', () => {
                     const source = chip.dataset.source;
+                    setActiveBalancer(source);
                     closeSettings();
-                    window.dispatchEvent(new CustomEvent('change-balancer', { detail: { source } }));
+                    window.dispatchEvent(new CustomEvent('change-balancer', { 
+                        detail: { 
+                            source, 
+                            preferredVoice: source === 'rezka' ? 'TVShows' : null 
+                        } 
+                    }));
                 });
             });
         }
@@ -225,6 +231,7 @@ const CinemaPlayer = (() => {
     }
 
     function openSettings() {
+        buildAudioMenu();
         settingsSheet.classList.remove('hidden');
         settingsSheet.style.visibility = 'visible';
         if (settingsBackdrop) settingsBackdrop.classList.remove('hidden');
@@ -483,6 +490,7 @@ const CinemaPlayer = (() => {
             });
 
             hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (event, data) => {
+                if (currentBalancer === 'rezka' || currentState.source === 'rezka') return;
                 buildAudioMenu(hls.audioTracks);
                 if (typeof currentState.translatorId === 'number' && hls.audioTracks[currentState.translatorId]) {
                     hls.audioTrack = currentState.translatorId;
@@ -499,7 +507,8 @@ const CinemaPlayer = (() => {
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             // Safari iOS (родная поддержка HLS)
             video.src = url;
-            video.addEventListener('loadedmetadata', () => {
+            const onMeta = () => {
+                video.removeEventListener('loadedmetadata', onMeta);
                 if (audioTrackNames && audioTrackNames.length > 0) {
                     buildAudioMenu(audioTrackNames.map(n => ({ name: n })));
                     if (video.audioTracks && video.audioTracks.length > currentState.translatorId) {
@@ -509,7 +518,8 @@ const CinemaPlayer = (() => {
                     }
                 }
                 restorePosition(currentTime, wasPlaying);
-            }, { once: true });
+            };
+            video.addEventListener('loadedmetadata', onMeta);
         }
     }
 
@@ -573,7 +583,10 @@ const CinemaPlayer = (() => {
         if (!settingsAudioOpts) return;
         settingsAudioOpts.innerHTML = '';
 
-        if (!tracks || tracks.length === 0) {
+        const isRezka = (currentBalancer === 'rezka' || currentState.source === 'rezka');
+        let rawList = (tracks && tracks.length > 0 && !isRezka) ? tracks : (audioTrackNames && audioTrackNames.length > 0 ? audioTrackNames.map(n => ({ name: n })) : []);
+
+        if (!rawList || rawList.length === 0) {
             const emptyLabel = document.createElement('span');
             emptyLabel.className = 'settings-chip';
             emptyLabel.textContent = currentState.translatorName || 'Основная';
@@ -581,33 +594,70 @@ const CinemaPlayer = (() => {
             return;
         }
 
-        tracks.forEach((track, idx) => {
-            const name = (audioTrackNames && audioTrackNames[idx]) ? audioTrackNames[idx] : (track.name || `Дорожка ${idx + 1}`);
+        let items = rawList.map((t, idx) => ({
+            originalIndex: idx,
+            fullName: (audioTrackNames && audioTrackNames[idx]) ? audioTrackNames[idx] : (t.name || `Дорожка ${idx + 1}`),
+        }));
+
+        if (isRezka) {
+            // Приоритетная сортировка для Резки: TVShows на 1 месте, LostFilm на 2 месте!
+            items.sort((a, b) => {
+                const aLow = a.fullName.toLowerCase();
+                const bLow = b.fullName.toLowerCase();
+                const aScore = aLow.includes('tvshows') ? 0 : (aLow.includes('lostfilm') ? 1 : 2);
+                const bScore = bLow.includes('tvshows') ? 0 : (bLow.includes('lostfilm') ? 1 : 2);
+                return aScore - bScore;
+            });
+        }
+
+        const currentName = (currentState.translatorName || '').toLowerCase().trim();
+
+        items.forEach((item) => {
+            const fullName = item.fullName;
+            const originalIdx = item.originalIndex;
+            // Компактное чистое имя для кнопки, напр: "TVShows (Проф. многоголосый)" -> "TVShows"
+            const shortName = fullName.replace(/\s*\([^)]*\)/g, '').trim() || fullName;
+
             const btn = document.createElement('button');
-            const isActive = (idx === (hls ? hls.audioTrack : currentState.translatorId));
+            const fullNameLower = fullName.toLowerCase();
+            const shortNameLower = shortName.toLowerCase();
+            const isMatchByName = currentName && (
+                fullNameLower === currentName ||
+                shortNameLower === currentName ||
+                fullNameLower.includes(currentName) || 
+                currentName.includes(shortNameLower)
+            );
+            let isActive = false;
+            if (isRezka) {
+                isActive = isMatchByName || (originalIdx === currentState.translatorId);
+            } else {
+                isActive = isMatchByName || (originalIdx === (hls ? hls.audioTrack : currentState.translatorId));
+            }
+
             btn.className = 'settings-chip' + (isActive ? ' active' : '');
-            btn.textContent = name;
+            btn.textContent = shortName;
+            btn.title = fullName;
 
             btn.addEventListener('click', () => {
-                if (currentBalancer === 'rezka' || currentState.source === 'rezka') {
-                    currentState.translatorId = idx;
-                    currentState.translatorName = name;
+                if (isRezka) {
+                    currentState.translatorId = originalIdx;
+                    currentState.translatorName = shortName;
                     settingsAudioOpts.querySelectorAll('.settings-chip').forEach(c => c.classList.remove('active'));
                     btn.classList.add('active');
                     window.dispatchEvent(new CustomEvent('change-rezka-voice', {
-                        detail: { translatorId: idx, translatorName: name }
+                        detail: { translatorId: originalIdx, translatorName: fullName }
                     }));
                     return;
                 }
                 if (hls) {
-                    hls.audioTrack = idx;
-                } else if (video.audioTracks && video.audioTracks.length > idx) {
+                    hls.audioTrack = originalIdx;
+                } else if (video.audioTracks && video.audioTracks.length > originalIdx) {
                     for (let i = 0; i < video.audioTracks.length; i++) {
-                        video.audioTracks[i].enabled = (i === idx);
+                        video.audioTracks[i].enabled = (i === originalIdx);
                     }
                 }
-                currentState.translatorId = idx;
-                currentState.translatorName = name;
+                currentState.translatorId = originalIdx;
+                currentState.translatorName = fullName;
                 settingsAudioOpts.querySelectorAll('.settings-chip').forEach(c => c.classList.remove('active'));
                 btn.classList.add('active');
                 saveProgress();

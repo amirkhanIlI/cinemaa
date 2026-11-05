@@ -1,11 +1,11 @@
-// Service Worker — кэширование статики для быстрого старта PWA (V8)
-const CACHE_NAME = 'clean-cinema-v8';
+// Service Worker — кэширование статики для быстрого старта PWA (V9)
+const CACHE_NAME = 'clean-cinema-v9';
 const STATIC_ASSETS = [
     '/',
-    '/static/css/style.css?v=8',
-    '/static/js/app.js?v=8',
-    '/static/js/player.js?v=8',
-    '/static/js/storage.js?v=8',
+    '/static/css/style.css?v=9',
+    '/static/js/app.js?v=9',
+    '/static/js/player.js?v=9',
+    '/static/js/storage.js?v=9',
     '/static/manifest.json',
 ];
 

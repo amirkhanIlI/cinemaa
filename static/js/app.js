@@ -113,20 +113,36 @@ const CinemaApp = (() => {
         window.addEventListener('change-balancer', async (e) => {
             const newSource = e.detail?.source || 'collaps';
             const prevSource = CinemaPlayer.getActiveBalancer() || 'collaps';
-            const ok = await playStream(newSource);
+
+            if (newSource === 'rezka') {
+                selectedTranslator = { 
+                    id: 'rezka_tvshows', 
+                    name: 'TVShows (Проф. многоголосый)', 
+                    source: 'rezka', 
+                    rezka_id: 3,
+                    rezka_voice: 'TVShows' 
+                };
+            }
+            CinemaPlayer.setActiveBalancer(newSource);
+            const ok = await playStream(newSource, newSource === 'rezka' ? 'TVShows' : null);
             if (!ok) {
-                // Если не удалось загрузить — возвращаем кнопку на рабочий плеер!
                 CinemaPlayer.setActiveBalancer(prevSource);
-            } else {
-                CinemaPlayer.setActiveBalancer(newSource);
             }
         });
 
         // Переключение озвучки Rezka из шторки ⚙️
         window.addEventListener('change-rezka-voice', async (e) => {
             const { translatorId, translatorName } = e.detail || {};
-            selectedTranslator = { id: translatorId, name: translatorName, source: 'rezka', rezka_id: translatorId };
-            await playStream('rezka');
+            const voiceShort = translatorName.split('(')[0].trim();
+            selectedTranslator = { 
+                id: translatorId, 
+                name: translatorName, 
+                source: 'rezka', 
+                rezka_id: translatorId,
+                rezka_voice: voiceShort 
+            };
+            localStorage.setItem('cinema_preferred_balancer', 'rezka');
+            await playStream('rezka', voiceShort);
         });
 
         // Загрузка популярных сериалов и истории
@@ -261,8 +277,7 @@ const CinemaApp = (() => {
                     if (m) {
                         try {
                             const sList = JSON.parse(m[1]);
-                            data.seasons = {};
-                            data.translators = [];
+                            data.seasons = data.seasons || {};
                             for (const s of sList) {
                                 const sNum = String(s.season);
                                 const eps = (s.episodes || [])
@@ -271,11 +286,22 @@ const CinemaApp = (() => {
                                 if (eps.length > 0) {
                                     data.seasons[sNum] = eps.sort((a, b) => a - b);
                                 }
-                                if (data.translators.length === 0 && s.episodes && s.episodes[0]) {
-                                    const names = s.episodes[0].audio?.names || [];
-                                    data.translators = names.map((name, idx) => ({ id: idx, name }));
-                                }
                             }
+
+                            // Сохраняем уже существующие озвучки из Rezka (TVShows, LostFilm и др.)
+                            const existingTranslators = data.translators || [];
+                            const existingNames = new Set(existingTranslators.map(t => t.name.toLowerCase()));
+
+                            if (sList[0]?.episodes?.[0]?.audio?.names) {
+                                const names = sList[0].episodes[0].audio.names || [];
+                                names.forEach((name, idx) => {
+                                    if (!existingNames.has(name.toLowerCase())) {
+                                        existingTranslators.push({ id: idx, name: name, source: 'collaps' });
+                                        existingNames.add(name.toLowerCase());
+                                    }
+                                });
+                            }
+                            data.translators = existingTranslators;
                         } catch (err) {
                             console.error('[Collaps Client] seasons parse error:', err);
                         }
@@ -293,6 +319,31 @@ const CinemaApp = (() => {
                         data.translators = names.map((name, idx) => ({ id: idx, name }));
                     }
                 } catch (e) {}
+            }
+        }
+
+        // Для сериалов гарантируем наличие TVShows и LostFilm
+        if (data.type === 'series') {
+            if (!data.translators) data.translators = [];
+            const hasTvshows = data.translators.some(t => t.name.toLowerCase().includes('tvshows'));
+            if (!hasTvshows) {
+                data.translators.unshift({
+                    id: 'rezka_3',
+                    name: 'TVShows (Проф. многоголосый)',
+                    source: 'rezka',
+                    rezka_id: 3,
+                    rezka_voice: 'TVShows',
+                });
+            }
+            const hasLostfilm = data.translators.some(t => t.name.toLowerCase().includes('lostfilm'));
+            if (!hasLostfilm) {
+                data.translators.splice(1, 0, {
+                    id: 'rezka_0',
+                    name: 'LostFilm (Проф. многоголосый)',
+                    source: 'rezka',
+                    rezka_id: 0,
+                    rezka_voice: 'LostFilm',
+                });
             }
         }
     }
@@ -418,6 +469,17 @@ const CinemaApp = (() => {
             detailsOrigTitle.textContent = data.orig_title || '';
             detailsDesc.textContent = data.description || '';
 
+            // Приоритетная сортировка: TVShows и LostFilm первыми!
+            if (data.translators && data.translators.length > 0) {
+                data.translators.sort((a, b) => {
+                    const aName = (a.name || '').toLowerCase();
+                    const bName = (b.name || '').toLowerCase();
+                    const aScore = aName.includes('tvshows') ? 0 : (aName.includes('lostfilm') ? 1 : 2);
+                    const bScore = bName.includes('tvshows') ? 0 : (bName.includes('lostfilm') ? 1 : 2);
+                    return aScore - bScore;
+                });
+            }
+
             // Озвучки
             translatorsList.innerHTML = '';
             selectedTranslator = null;
@@ -441,6 +503,11 @@ const CinemaApp = (() => {
                     }
 
                     translatorsList.appendChild(chip);
+                }
+
+                if (!selectedTranslator && data.translators.length > 0) {
+                    selectedTranslator = data.translators[0];
+                    translatorsList.children[0]?.classList.add('active');
                 }
             }
 
@@ -477,6 +544,15 @@ const CinemaApp = (() => {
         translatorsList.querySelectorAll('.chip').forEach(c => {
             c.classList.toggle('active', c.dataset.id == translator.id);
         });
+
+        // Если выбрана озвучка Rezka (TVShows или LostFilm), сразу включаем Rezka как источник
+        if (translator.source === 'rezka' || String(translator.id).includes('rezka') || translator.rezka_voice) {
+            localStorage.setItem('cinema_preferred_balancer', 'rezka');
+            if (window.CinemaPlayer) CinemaPlayer.setActiveBalancer('rezka');
+        } else {
+            localStorage.setItem('cinema_preferred_balancer', 'collaps');
+            if (window.CinemaPlayer) CinemaPlayer.setActiveBalancer('collaps');
+        }
     }
 
     async function renderSeasons(seasons) {
@@ -564,7 +640,7 @@ const CinemaApp = (() => {
 
     // ─── Запуск потока ───
 
-    async function playStream(preferredSource = null) {
+    async function playStream(preferredSource = null, explicitVoice = null) {
         if (!currentDetails) return;
         if (!selectedTranslator && currentDetails.translators?.length > 0) {
             selectedTranslator = currentDetails.translators[0];
@@ -582,13 +658,21 @@ const CinemaApp = (() => {
             }
         }
 
+        let voiceName = explicitVoice || selectedTranslator?.rezka_voice || selectedTranslator?.name || '';
+        if (source === 'rezka') {
+            const isCollapsOnly = voiceName.includes('Novamedia') || voiceName.includes('JASKIER') || voiceName.includes('Дубляж') || voiceName.includes('Eng.Original');
+            if (!voiceName || isCollapsOnly) {
+                voiceName = 'TVShows';
+            }
+        }
+
         try {
             let data = null;
             try {
                 const tid = selectedTranslator ? (selectedTranslator.rezka_id ?? selectedTranslator.id) : 0;
                 let url = `/api/stream?url=${encodeURIComponent(currentDetails.url)}&translator_id=${encodeURIComponent(tid)}&source=${source}`;
-                if (selectedTranslator?.name) {
-                    url += `&preferred_voice=${encodeURIComponent(selectedTranslator.name)}`;
+                if (voiceName) {
+                    url += `&preferred_voice=${encodeURIComponent(voiceName)}`;
                 }
                 if (currentDetails.type === 'series' && selectedSeason && selectedEpisode) {
                     url += `&season=${selectedSeason}&episode=${selectedEpisode}`;
@@ -617,15 +701,11 @@ const CinemaApp = (() => {
                 }
             }
 
-            // Железный авто-фоллбэк: если kodik или rezka не отдали поток, 
-            // МГНОВЕННО переключаемся на надежный Collaps, чтобы видео ВСЕГДА играло!
-            if (!data || data.error || !data.streams || Object.keys(data.streams).length === 0) {
-                if (source !== 'collaps') {
-                    console.warn(`[Balancer] Source '${source}' failed, auto-falling back to Collaps...`);
-                    try { localStorage.setItem('cinema_preferred_balancer', 'collaps'); } catch {}
-                    if (window.CinemaPlayer) CinemaPlayer.setActiveBalancer('collaps');
-                    return await playStream('collaps');
-                }
+            // Если выбран источник rezka и произошла ошибка — честно сообщаем, не переключаясь тихо на Collaps
+            if (source === 'rezka' && (!data || data.error || !data.streams || Object.keys(data.streams).length === 0)) {
+                const errMsg = data?.error || 'HDRezka временно недоступна для этого эпизода. Попробуйте выбрать другой плеер в настройках ⚙️.';
+                alert(errMsg);
+                return false;
             }
 
             if (!data || data.error) {
@@ -662,8 +742,8 @@ const CinemaApp = (() => {
                 season: selectedSeason,
                 episode: selectedEpisode,
                 episodeTitle: epTitle,
-                translatorId: selectedTranslator ? (selectedTranslator.rezka_id ?? selectedTranslator.id) : 0,
-                translatorName: selectedTranslator ? selectedTranslator.name : '',
+                translatorId: (data.selected_audio_index !== undefined) ? data.selected_audio_index : (selectedTranslator ? (selectedTranslator.rezka_id ?? selectedTranslator.id) : 0),
+                translatorName: (data.source === 'rezka' && voiceName) ? voiceName : (selectedTranslator ? selectedTranslator.name : ''),
                 source: data.source || source,
             });
             return true;

@@ -236,7 +236,7 @@ async def get_details(media_type: str, tmdb_id: str | int) -> dict:
     if media_type == "series" and title:
         try:
             from server.parsers import rezka
-            r_stream = await rezka.get_stream(title, season=1, episode=1)
+            r_stream = await rezka.get_stream(title, season=1, episode=1, preferred_voice="TVShows")
             r_tracks = r_stream.get("audio_tracks", [])
             if r_tracks:
                 existing_lower = [t["name"].lower() for t in translators]
@@ -248,9 +248,42 @@ async def get_details(media_type: str, tmdb_id: str | int) -> dict:
                             "name": r_name,
                             "source": "rezka",
                             "rezka_id": r_idx,
+                            "rezka_voice": r_name.split("(")[0].strip(),
                         })
         except Exception as e:
             logger.debug(f"Rezka details merge skipped: {e}")
+
+        # Гарантируем, что для сериалов в списке всегда первыми стоят TVShows и LostFilm
+        has_tvshows = any("tvshows" in t["name"].lower() for t in translators)
+        if not has_tvshows:
+            translators.append({
+                "id": "rezka_tvshows",
+                "name": "TVShows (Проф. многоголосый)",
+                "source": "rezka",
+                "rezka_id": 3,
+                "rezka_voice": "TVShows",
+            })
+        has_lostfilm = any("lostfilm" in t["name"].lower() for t in translators)
+        if not has_lostfilm:
+            translators.append({
+                "id": "rezka_lostfilm",
+                "name": "LostFilm (Проф. многоголосый)",
+                "source": "rezka",
+                "rezka_id": 0,
+                "rezka_voice": "LostFilm",
+            })
+
+        # Принудительно ставим TVShows на 1 место, а LostFilm на 2 место!
+        def _sort_voice_key(t):
+            t_name = (t.get("name") or "").lower()
+            if "tvshows" in t_name:
+                return 0
+            if "lostfilm" in t_name:
+                return 1
+            if t.get("source") == "rezka":
+                return 2
+            return 3
+        translators.sort(key=_sort_voice_key)
 
     if not translators:
         translators = [{"id": 0, "name": "Стандартная (Дубляж)"}]

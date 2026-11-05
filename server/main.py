@@ -69,6 +69,44 @@ async def api_trending():
 
 
 # ---------------------------------------------------------------------------
+# API — Отладка Rezka на Render
+# ---------------------------------------------------------------------------
+@app.get("/api/debug_rezka")
+async def api_debug_rezka():
+    """Диагностика подключения к Rezka и Cinemar."""
+    logs = {}
+    try:
+        from server.parsers import rezka
+        logs["import_rezka"] = "OK"
+        client = await rezka._get_client()
+        for m in rezka.MIRRORS:
+            try:
+                r = await client.get(f"{m}/", timeout=6.0)
+                logs[f"mirror_{m}"] = {"status": r.status_code, "server": r.headers.get("server"), "len": len(r.text)}
+            except Exception as e:
+                logs[f"mirror_{m}"] = {"error": f"{type(e).__name__}: {e}"}
+
+        try:
+            s_res = await rezka.search("Декстер: Новая кровь")
+            logs["search_count"] = len(s_res)
+            if s_res:
+                logs["first_item"] = s_res[0]
+                stream = await rezka.get_stream("Декстер: Новая кровь", season=1, episode=7, preferred_voice="TVShows")
+                logs["stream_result"] = {
+                    "ok": bool(stream.get("hls_url")),
+                    "error": stream.get("error"),
+                    "audio_tracks": stream.get("audio_tracks"),
+                    "selected_idx": stream.get("selected_audio_index"),
+                    "hls_sample": stream.get("hls_url", "")[:80] if stream.get("hls_url") else ""
+                }
+        except Exception as e:
+            logs["search_or_stream_error"] = f"{type(e).__name__}: {e}"
+    except Exception as e:
+        logs["import_error"] = f"{type(e).__name__}: {e}"
+    return logs
+
+
+# ---------------------------------------------------------------------------
 # API — Детальная информация (озвучки, сезоны, серии)
 # ---------------------------------------------------------------------------
 @app.get("/api/details")
@@ -141,10 +179,12 @@ async def api_stream(
                 stream_data = await cinema_source.get_stream_rezka(
                     media_type=m_type, tmdb_id=tmdb_id,
                     translator_id=translator_id, season=season, episode=episode,
-                    preferred_voice=preferred_voice,
+                    preferred_voice=preferred_voice or "TVShows",
                 )
-            except Exception:
-                stream_data = None
+            except Exception as e:
+                logger.exception("Rezka stream error")
+                stream_data = {"error": f"Rezka: {e}"}
+            return stream_data
 
         # Железный авто-фоллбэк: если kodik/rezka выдали ошибку или пустой результат,
         # сервер сам мгновенно переключается на рабочий Collaps, чтобы видео ВСЕГДА играло!

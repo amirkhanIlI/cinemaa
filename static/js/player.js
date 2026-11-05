@@ -38,6 +38,7 @@ const CinemaPlayer = (() => {
     const progressPlayed     = document.getElementById('player-progress-played');
     const progressBuffered   = document.getElementById('player-progress-buffered');
     const progressHandle     = document.getElementById('player-progress-handle');
+    const progressTooltip    = document.getElementById('player-progress-tooltip');
     const playerTitle        = document.getElementById('player-title');
     const tapLeft            = document.getElementById('tap-left');
     const tapRight           = document.getElementById('tap-right');
@@ -116,6 +117,11 @@ const CinemaPlayer = (() => {
         progressBar.addEventListener('pointerdown', onProgressDown);
         document.addEventListener('pointermove', onProgressMove);
         document.addEventListener('pointerup', onProgressUp);
+        progressBar.addEventListener('pointermove', onProgressHover);
+        progressBar.addEventListener('pointerleave', onProgressLeave);
+
+        // Управление с клавиатуры (ноутбук / ПК)
+        window.addEventListener('keydown', onKeyDown);
 
         // Тапы (±10 сек)
         tapLeft.addEventListener('click', () => handleDoubleTap('left'));
@@ -175,7 +181,8 @@ const CinemaPlayer = (() => {
             settingsBalancerOpts.querySelectorAll('.settings-chip').forEach(chip => {
                 chip.addEventListener('click', () => {
                     const source = chip.dataset.source;
-                    setBalancer(source);
+                    closeSettings();
+                    window.dispatchEvent(new CustomEvent('change-balancer', { detail: { source } }));
                 });
             });
         }
@@ -258,29 +265,57 @@ const CinemaPlayer = (() => {
         }
     }
 
-    function setBalancer(source) {
+    let currentBalancer = 'collaps';
+
+    function getActiveBalancer() {
+        return currentBalancer;
+    }
+
+    function setActiveBalancer(source) {
+        currentBalancer = source;
         localStorage.setItem('cinema_preferred_balancer', source);
         if (settingsBalancerOpts) {
             settingsBalancerOpts.querySelectorAll('.settings-chip').forEach(c => {
                 c.classList.toggle('active', c.dataset.source === source);
             });
         }
-        closeSettings();
-        window.dispatchEvent(new CustomEvent('change-balancer', { detail: { source } }));
     }
 
     async function togglePiP() {
+        const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+        const isStandalone = window.navigator.standalone === true || 
+                             window.matchMedia('(display-mode: standalone)').matches;
+
+        // Если запущено как иконка PWA на iOS (с экрана «Домой»)
+        if (isIOS && isStandalone) {
+            alert(
+                '📱 Ограничение Apple iOS:\n\n' +
+                'Apple блокирует режим «Картинка в картинке» для приложений, запущенных с экрана Домой (PWA).\n\n' +
+                '💡 Чтобы смотреть фильм в маленьком окне и пользоваться телефоном, откройте сайт в обычном браузере Safari.'
+            );
+            return;
+        }
+
         try {
+            // Safari iOS (в обычной вкладке браузера)
+            if (typeof video.webkitSetPresentationMode === 'function') {
+                const currentMode = video.webkitPresentationMode;
+                const targetMode = currentMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture';
+                video.webkitSetPresentationMode(targetMode);
+                return;
+            }
+
+            // Desktop / Chrome / Android
             if (document.pictureInPictureElement) {
                 await document.exitPictureInPicture();
             } else if (video.requestPictureInPicture) {
                 await video.requestPictureInPicture();
-            } else if (typeof video.webkitSetPresentationMode === 'function') {
-                const mode = video.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture';
-                video.webkitSetPresentationMode(mode);
             }
         } catch (e) {
             console.warn('[PiP error]:', e);
+            if (isIOS) {
+                alert('Режим «Картинка в картинке» поддерживается в браузере Safari.');
+            }
         }
     }
 
@@ -330,7 +365,16 @@ const CinemaPlayer = (() => {
             episodeTitle: opts.episodeTitle || '',
             translatorId: opts.translatorId ?? 0,
             translatorName: opts.translatorName || '',
+            source: opts.source || currentBalancer || 'collaps',
         };
+
+        if (opts.source) {
+            setActiveBalancer(opts.source);
+        }
+
+        if (audioTrackNames && audioTrackNames.length > 0) {
+            buildAudioMenu(audioTrackNames.map(n => ({ name: n })));
+        }
 
         const streamUrl = opts.hls_url || Object.values(currentStreams)[0] || '';
         if (!streamUrl) {
@@ -545,6 +589,16 @@ const CinemaPlayer = (() => {
             btn.textContent = name;
 
             btn.addEventListener('click', () => {
+                if (currentBalancer === 'rezka' || currentState.source === 'rezka') {
+                    currentState.translatorId = idx;
+                    currentState.translatorName = name;
+                    settingsAudioOpts.querySelectorAll('.settings-chip').forEach(c => c.classList.remove('active'));
+                    btn.classList.add('active');
+                    window.dispatchEvent(new CustomEvent('change-rezka-voice', {
+                        detail: { translatorId: idx, translatorName: name }
+                    }));
+                    return;
+                }
                 if (hls) {
                     hls.audioTrack = idx;
                 } else if (video.audioTracks && video.audioTracks.length > idx) {
@@ -691,7 +745,64 @@ const CinemaPlayer = (() => {
         if (!isDragging) return;
         isDragging = false;
         progressBar.classList.remove('dragging');
+        if (progressTooltip) progressTooltip.classList.add('hidden');
         saveProgress();
+    }
+
+    function onProgressHover(e) {
+        if (!video.duration || !progressTooltip) return;
+        const rect = progressBar.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        progressTooltip.textContent = formatTime(pct * video.duration);
+        progressTooltip.style.left = `${pct * 100}%`;
+        progressTooltip.classList.remove('hidden');
+    }
+
+    function onProgressLeave() {
+        if (progressTooltip && !isDragging) {
+            progressTooltip.classList.add('hidden');
+        }
+    }
+
+    function onKeyDown(e) {
+        // Игнорируем ввод в текстовые поля
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+            return;
+        }
+        // Работает только когда экран плеера активен
+        if (!screen.classList.contains('active')) return;
+
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            handleDoubleTap('left'); // seek -10s + красивый ripple
+            showControls();
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            handleDoubleTap('right'); // seek +10s + красивый ripple
+            showControls();
+        } else if (e.code === 'Space' || e.key === ' ') {
+            e.preventDefault();
+            togglePlayPause();
+        } else if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') {
+            e.preventDefault();
+            toggleFullscreen();
+        } else if (e.key === 'm' || e.key === 'M' || e.key === 'ь' || e.key === 'Ь') {
+            e.preventDefault();
+            video.muted = !video.muted;
+            showControls();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            video.volume = Math.min(1, Math.round((video.volume + 0.1) * 10) / 10);
+            showControls();
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            video.volume = Math.max(0, Math.round((video.volume - 0.1) * 10) / 10);
+            showControls();
+        } else if (e.key === 'Escape') {
+            if (!settingsSheet.classList.contains('hidden')) {
+                closeSettings();
+            }
+        }
     }
 
     function seekTo(e) {
@@ -784,5 +895,5 @@ const CinemaPlayer = (() => {
 
     init();
 
-    return { open, close, saveProgress, setSpeed, setAspect, togglePiP };
+    return { open, close, saveProgress, setSpeed, setAspect, togglePiP, getActiveBalancer, setActiveBalancer };
 })();

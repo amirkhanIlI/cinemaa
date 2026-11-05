@@ -14,6 +14,8 @@ const CinemaApp = (() => {
     const searchClear     = document.getElementById('search-clear');
     const continueSection = document.getElementById('continue-section');
     const continueList    = document.getElementById('continue-list');
+    const trendingSection = document.getElementById('trending-section');
+    const trendingList    = document.getElementById('trending-list');
     const resultsSection  = document.getElementById('results-section');
     const resultsList     = document.getElementById('results-list');
     const emptyState      = document.getElementById('empty-state');
@@ -61,9 +63,11 @@ const CinemaApp = (() => {
             clearTimeout(searchTimeout);
             if (q.length >= 2) {
                 searchTimeout = setTimeout(() => doSearch(q), 350);
+                if (trendingSection) trendingSection.classList.add('hidden');
             } else {
                 resultsSection.classList.add('hidden');
-                emptyState.classList.toggle('hidden', continueList.children.length > 0);
+                if (trendingList && trendingList.children.length > 0) trendingSection.classList.remove('hidden');
+                emptyState.classList.toggle('hidden', continueList.children.length > 0 || (trendingList && trendingList.children.length > 0));
             }
         });
 
@@ -71,7 +75,8 @@ const CinemaApp = (() => {
             searchInput.value = '';
             searchClear.classList.add('hidden');
             resultsSection.classList.add('hidden');
-            emptyState.classList.toggle('hidden', continueList.children.length > 0);
+            if (trendingList && trendingList.children.length > 0) trendingSection.classList.remove('hidden');
+            emptyState.classList.toggle('hidden', continueList.children.length > 0 || (trendingList && trendingList.children.length > 0));
             searchInput.focus();
         });
 
@@ -117,7 +122,15 @@ const CinemaApp = (() => {
             }
         });
 
-        // Синхронизация и загрузка истории
+        // Переключение озвучки Rezka из шторки ⚙️
+        window.addEventListener('change-rezka-voice', async (e) => {
+            const { translatorId, translatorName } = e.detail || {};
+            selectedTranslator = { id: translatorId, name: translatorName, source: 'rezka', rezka_id: translatorId };
+            await playStream('rezka');
+        });
+
+        // Загрузка популярных сериалов и истории
+        loadTrendingSeries();
         CinemaStorage.syncWithServer().then(() => {
             loadContinueWatching();
         });
@@ -134,6 +147,45 @@ const CinemaApp = (() => {
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         screenHome.classList.add('active');
         loadContinueWatching();
+        if (trendingList && trendingList.children.length > 0 && (!searchInput.value.trim())) {
+            trendingSection.classList.remove('hidden');
+        }
+    }
+
+    async function loadTrendingSeries() {
+        if (!trendingSection || !trendingList) return;
+        try {
+            const resp = await fetch('/api/trending');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const items = data.results || [];
+            if (items.length === 0) return;
+
+            trendingList.innerHTML = '';
+            for (const item of items) {
+                const card = document.createElement('div');
+                card.className = 'continue-card';
+                card.innerHTML = `
+                    <div class="continue-poster-wrap">
+                        <img class="continue-poster" src="${escapeHtml(item.poster_url)}" alt="${escapeHtml(item.title)}" loading="lazy"
+                             onerror="this.style.background='var(--bg-elevated)'">
+                        ${item.rating ? `<span class="continue-rating">★ ${escapeHtml(item.rating)}</span>` : ''}
+                    </div>
+                    <div class="continue-card-info">
+                        <div class="continue-card-title">${escapeHtml(item.title)}</div>
+                        <div class="continue-card-sub">${escapeHtml(item.year)} · Сериал</div>
+                    </div>
+                `;
+                card.addEventListener('click', () => {
+                    openDetails(item.url);
+                });
+                trendingList.appendChild(card);
+            }
+            trendingSection.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+        } catch (e) {
+            console.warn('[Trending] failed to load:', e);
+        }
     }
 
     function showDetails() {
@@ -372,6 +424,7 @@ const CinemaApp = (() => {
             if (data.translators && data.translators.length > 0) {
                 const saved = pendingResume || CinemaStorage.get(data.id);
                 const savedTid = saved ? saved.translatorId : null;
+                const savedTName = saved ? saved.translatorName : null;
 
                 for (const t of data.translators) {
                     const chip = document.createElement('button');
@@ -381,7 +434,8 @@ const CinemaApp = (() => {
 
                     chip.addEventListener('click', () => selectTranslator(t));
 
-                    if (t.id === savedTid || (!savedTid && !selectedTranslator)) {
+                    const isMatch = (t.id === savedTid) || (savedTName && t.name.toLowerCase().includes(savedTName.toLowerCase()));
+                    if (isMatch || (!savedTid && !savedTName && !selectedTranslator)) {
                         chip.classList.add('active');
                         selectedTranslator = t;
                     }
@@ -518,12 +572,24 @@ const CinemaApp = (() => {
 
         spinner.classList.remove('hidden');
 
-        const source = preferredSource || localStorage.getItem('cinema_preferred_balancer') || 'collaps';
+        // Определение источника (Collaps или Rezka)
+        let source = preferredSource;
+        if (!source) {
+            if (selectedTranslator && (selectedTranslator.source === 'rezka' || String(selectedTranslator.id).startsWith('rezka_'))) {
+                source = 'rezka';
+            } else {
+                source = localStorage.getItem('cinema_preferred_balancer') || 'collaps';
+            }
+        }
 
         try {
             let data = null;
             try {
-                let url = `/api/stream?url=${encodeURIComponent(currentDetails.url)}&translator_id=${selectedTranslator ? selectedTranslator.id : 0}&source=${source}`;
+                const tid = selectedTranslator ? (selectedTranslator.rezka_id ?? selectedTranslator.id) : 0;
+                let url = `/api/stream?url=${encodeURIComponent(currentDetails.url)}&translator_id=${encodeURIComponent(tid)}&source=${source}`;
+                if (selectedTranslator?.name) {
+                    url += `&preferred_voice=${encodeURIComponent(selectedTranslator.name)}`;
+                }
                 if (currentDetails.type === 'series' && selectedSeason && selectedEpisode) {
                     url += `&season=${selectedSeason}&episode=${selectedEpisode}`;
                 }
@@ -596,8 +662,9 @@ const CinemaApp = (() => {
                 season: selectedSeason,
                 episode: selectedEpisode,
                 episodeTitle: epTitle,
-                translatorId: selectedTranslator ? selectedTranslator.id : 0,
+                translatorId: selectedTranslator ? (selectedTranslator.rezka_id ?? selectedTranslator.id) : 0,
                 translatorName: selectedTranslator ? selectedTranslator.name : '',
+                source: data.source || source,
             });
             return true;
         } catch (e) {

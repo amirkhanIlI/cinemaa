@@ -10,7 +10,7 @@
     <link rel="manifest" href="/static/manifest.json">
     <link rel="icon" href="/static/icons/icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-    <link rel="stylesheet" href="/static/css/style.css?v=7">
+    <link rel="stylesheet" href="/static/css/style.css?v=8">
     <!-- HLS.js для воспроизведения m3u8 потоков -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
 </head>
@@ -32,6 +32,12 @@
         <section id="continue-section" class="section hidden">
             <h2 class="section-title">▶ Продолжить просмотр</h2>
             <div id="continue-list" class="card-row"></div>
+        </section>
+
+        <!-- Популярные сериалы -->
+        <section id="trending-section" class="section hidden">
+            <h2 class="section-title">🔥 Популярные сериалы</h2>
+            <div id="trending-list" class="card-row"></div>
         </section>
 
         <!-- Результаты поиска -->
@@ -159,6 +165,7 @@
                         <div id="player-progress-buffered" class="progress-buffered"></div>
                         <div id="player-progress-played" class="progress-played"></div>
                         <div id="player-progress-handle" class="progress-handle"></div>
+                        <div id="player-progress-tooltip" class="player-progress-tooltip hidden">0:00</div>
                     </div>
                     <span id="player-time-duration" class="player-time">0:00</span>
                     <button id="btn-fullscreen" class="btn-icon-touch" aria-label="Полный экран">
@@ -211,6 +218,7 @@
                     <div class="settings-label">📺 Источник видео</div>
                     <div id="settings-balancer-options" class="settings-options">
                         <button class="settings-chip active" data-source="collaps">Плеер 1 (Collaps · 1080p Full HD)</button>
+                        <button class="settings-chip" data-source="rezka">Плеер 2 (HDRezka · TVShows / LostFilm)</button>
                     </div>
                 </div>
 
@@ -260,8 +268,8 @@
     </div>
 
     <!-- Скрипты -->
-    <script src="/static/js/storage.js?v=7"></script>
-    <script src="/static/js/player.js?v=7"></script>
-    <script src="/static/js/app.js?v=7"></script>
+    <script src="/static/js/storage.js?v=8"></script>
+    <script src="/static/js/player.js?v=8"></script>
+    <script src="/static/js/app.js?v=8"></script>
 </body>
 </html>

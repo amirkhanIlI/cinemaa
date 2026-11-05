@@ -197,6 +197,33 @@ input, textarea {
     width: 100%; height: 140px;
     object-fit: cover;
 }
+.continue-poster-wrap {
+    position: relative;
+    width: 100%;
+    height: 140px;
+    background: var(--bg-elevated);
+    overflow: hidden;
+}
+.continue-poster {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.continue-rating {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 6px;
+    border-radius: 6px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(234, 179, 8, 0.4);
+    color: #eab308;
+}
 .continue-card-info {
     padding: 10px 12px;
 }
@@ -611,6 +638,39 @@ input, textarea {
 .player-progress-bar.dragging .progress-handle {
     transform: translateX(-50%) scale(1.5);
     background: var(--accent);
+}
+
+.player-progress-tooltip {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+    transition: opacity 0.15s ease;
+    z-index: 30;
+}
+.player-progress-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 4px;
+    border-style: solid;
+    border-color: rgba(15, 23, 42, 0.95) transparent transparent transparent;
+}
+.player-progress-tooltip.hidden {
+    display: none;
 }
 
 /* Плавающая кнопка «Следующая серия (10с) ▶» */

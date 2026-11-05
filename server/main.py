@@ -55,6 +55,20 @@ async def api_search(q: str = Query(..., min_length=1)):
 
 
 # ---------------------------------------------------------------------------
+# API — Популярные свежие сериалы недели (TMDB)
+# ---------------------------------------------------------------------------
+@app.get("/api/trending")
+async def api_trending():
+    """Популярные свежие сериалы недели."""
+    try:
+        results = await cinema_source.get_trending_series()
+        return {"results": results}
+    except Exception as e:
+        logger.exception("Trending error")
+        return JSONResponse({"error": str(e)}, status_code=502)
+
+
+# ---------------------------------------------------------------------------
 # API — Детальная информация (озвучки, сезоны, серии)
 # ---------------------------------------------------------------------------
 @app.get("/api/details")
@@ -96,10 +110,11 @@ async def api_episodes(tv_id: str = Query(...), season: int = Query(...)):
 @app.get("/api/stream")
 async def api_stream(
     url: str = Query(...),
-    translator_id: int = Query(0),
+    translator_id: str | int = Query(0),
     season: int | None = Query(None),
     episode: int | None = Query(None),
     source: str = Query("collaps"),
+    preferred_voice: str | None = Query(None),
 ):
     """Get HLS streams. source can be 'collaps', 'kodik', or 'rezka'."""
     try:
@@ -114,9 +129,10 @@ async def api_stream(
         stream_data = None
         if source == "kodik":
             try:
+                int_tid = int(translator_id) if str(translator_id).isdigit() else 0
                 stream_data = await cinema_source.get_stream_kodik(
                     media_type=m_type, tmdb_id=tmdb_id,
-                    translator_id=translator_id, season=season, episode=episode,
+                    translator_id=int_tid, season=season, episode=episode,
                 )
             except Exception:
                 stream_data = None
@@ -125,6 +141,7 @@ async def api_stream(
                 stream_data = await cinema_source.get_stream_rezka(
                     media_type=m_type, tmdb_id=tmdb_id,
                     translator_id=translator_id, season=season, episode=episode,
+                    preferred_voice=preferred_voice,
                 )
             except Exception:
                 stream_data = None
@@ -132,10 +149,11 @@ async def api_stream(
         # Железный авто-фоллбэк: если kodik/rezka выдали ошибку или пустой результат,
         # сервер сам мгновенно переключается на рабочий Collaps, чтобы видео ВСЕГДА играло!
         if not stream_data or stream_data.get("error") or not stream_data.get("streams"):
+            int_tid = int(translator_id) if str(translator_id).isdigit() else 0
             stream_data = await cinema_source.get_stream(
                 media_type=m_type,
                 tmdb_id=tmdb_id,
-                translator_id=translator_id,
+                translator_id=int_tid,
                 season=season,
                 episode=episode,
             )

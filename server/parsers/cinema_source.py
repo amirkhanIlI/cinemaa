@@ -47,6 +47,50 @@ async def close_client():
         _client = None
 
 # ---------------------------------------------------------------------------
+# Популярные сериалы (Trending TV)
+# ---------------------------------------------------------------------------
+async def get_trending_series() -> list[dict]:
+    """Получает свежие популярные сериалы недели из TMDB."""
+    client = await _get_client()
+    url = f"{TMDB_BASE}/trending/tv/week"
+    params = {
+        "api_key": TMDB_API_KEY,
+        "language": "ru-RU",
+    }
+    try:
+        resp = await client.get(url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        raw_results = data.get("results", [])
+        
+        items = []
+        for r in raw_results:
+            title = r.get("name") or r.get("original_name") or ""
+            orig_title = r.get("original_name") or ""
+            poster_path = r.get("poster_path")
+            poster_url = f"{TMDB_IMAGE_BASE}{poster_path}" if poster_path else ""
+            date = r.get("first_air_date") or ""
+            year = date[:4] if date else ""
+            rating = f"{r.get('vote_average', 0):.1f}" if r.get("vote_average") else ""
+            
+            items.append({
+                "id": str(r.get("id")),
+                "tmdb_id": r.get("id"),
+                "title": title,
+                "orig_title": orig_title,
+                "year": year,
+                "rating": rating,
+                "poster_url": poster_url,
+                "type": "series",
+                "info": f"{year} · Сериал",
+                "url": f"/details/tv/{r.get('id')}",
+            })
+        return items
+    except Exception as e:
+        logger.error(f"Trending series error: {e}")
+        return []
+
+# ---------------------------------------------------------------------------
 # Поиск
 # ---------------------------------------------------------------------------
 async def search(query: str) -> list[dict]:
@@ -188,6 +232,26 @@ async def get_details(media_type: str, tmdb_id: str | int) -> dict:
         except Exception as e:
             logger.error(f"Collaps details fetch error: {e}")
             
+    # 4. Если сериал, проверяем и добавляем озвучки из HDRezka (например TVShows)
+    if media_type == "series" and title:
+        try:
+            from server.parsers import rezka
+            r_stream = await rezka.get_stream(title, season=1, episode=1)
+            r_tracks = r_stream.get("audio_tracks", [])
+            if r_tracks:
+                existing_lower = [t["name"].lower() for t in translators]
+                for r_idx, r_name in enumerate(r_tracks):
+                    clean_name = r_name.split("(")[0].strip().lower()
+                    if not any(clean_name in el for el in existing_lower):
+                        translators.append({
+                            "id": f"rezka_{r_idx}",
+                            "name": r_name,
+                            "source": "rezka",
+                            "rezka_id": r_idx,
+                        })
+        except Exception as e:
+            logger.debug(f"Rezka details merge skipped: {e}")
+
     if not translators:
         translators = [{"id": 0, "name": "Стандартная (Дубляж)"}]
         
@@ -383,18 +447,58 @@ async def get_stream_kodik(
         return {"error": f"Kodik: {e}"}
 
 # ---------------------------------------------------------------------------
-# Получение потока из HDRezka (заглушка)
+# Получение потока из HDRezka
 # ---------------------------------------------------------------------------
 async def get_stream_rezka(
     media_type: str,
     tmdb_id: str | int,
-    translator_id: int = 0,
+    translator_id: int | str = 0,
     season: int | None = None,
     episode: int | None = None,
+    preferred_voice: str | None = None,
 ) -> dict:
-    """Try to get stream from HDRezka balancer."""
+    """Получает прямой рабочий поток из HDRezka через Cinemar."""
     try:
-        return {"error": "HDRezka временно недоступна (ISP блокировка)"}
+        from server.parsers import rezka
+        # Преобразуем строковый ID вида "rezka_3" в число 3
+        int_tid = 0
+        if isinstance(translator_id, str):
+            if translator_id.startswith("rezka_"):
+                try:
+                    int_tid = int(translator_id.replace("rezka_", ""))
+                except Exception:
+                    int_tid = 0
+            else:
+                try:
+                    int_tid = int(translator_id)
+                except Exception:
+                    int_tid = 0
+        elif isinstance(translator_id, int):
+            int_tid = translator_id
+
+        # Получаем название фильма/сериала из TMDB
+        client = await _get_client()
+        clean_id = str(tmdb_id).replace("series_", "").replace("tv_", "").replace("movie_", "")
+        m_type = "tv" if media_type == "series" else "movie"
+        url = f"{TMDB_BASE}/{m_type}/{clean_id}"
+        params = {"api_key": TMDB_API_KEY, "language": "ru-RU"}
+        resp = await client.get(url, params=params)
+        title = ""
+        if resp.status_code == 200:
+            tmdb_data = resp.json()
+            title = tmdb_data.get("title") or tmdb_data.get("name") or ""
+
+        if not title:
+            return {"error": "Не удалось определить название фильма"}
+
+        stream_info = await rezka.get_stream(
+            title=title,
+            season=season,
+            episode=episode,
+            translator_id=int_tid,
+            preferred_voice=preferred_voice or "TVShows",
+        )
+        return stream_info
     except Exception as e:
         logger.error(f"Rezka stream error: {e}")
         return {"error": f"Rezka: {e}"}

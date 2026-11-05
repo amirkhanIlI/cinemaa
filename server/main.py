@@ -111,17 +111,27 @@ async def api_stream(
             m_type = "movie"
             tmdb_id = url
 
+        stream_data = None
         if source == "kodik":
-            stream_data = await cinema_source.get_stream_kodik(
-                media_type=m_type, tmdb_id=tmdb_id,
-                translator_id=translator_id, season=season, episode=episode,
-            )
+            try:
+                stream_data = await cinema_source.get_stream_kodik(
+                    media_type=m_type, tmdb_id=tmdb_id,
+                    translator_id=translator_id, season=season, episode=episode,
+                )
+            except Exception:
+                stream_data = None
         elif source == "rezka":
-            stream_data = await cinema_source.get_stream_rezka(
-                media_type=m_type, tmdb_id=tmdb_id,
-                translator_id=translator_id, season=season, episode=episode,
-            )
-        else:
+            try:
+                stream_data = await cinema_source.get_stream_rezka(
+                    media_type=m_type, tmdb_id=tmdb_id,
+                    translator_id=translator_id, season=season, episode=episode,
+                )
+            except Exception:
+                stream_data = None
+
+        # Железный авто-фоллбэк: если kodik/rezka выдали ошибку или пустой результат,
+        # сервер сам мгновенно переключается на рабочий Collaps, чтобы видео ВСЕГДА играло!
+        if not stream_data or stream_data.get("error") or not stream_data.get("streams"):
             stream_data = await cinema_source.get_stream(
                 media_type=m_type,
                 tmdb_id=tmdb_id,

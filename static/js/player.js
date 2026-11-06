@@ -420,6 +420,7 @@ const CinemaPlayer = (() => {
         }
 
         // Показать экран
+        document.body.classList.add('player-active');
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         screen.classList.add('active');
 
@@ -446,6 +447,7 @@ const CinemaPlayer = (() => {
         video.load();
         if (hls) { hls.destroy(); hls = null; }
 
+        document.body.classList.remove('player-active');
         screen.classList.remove('active');
         closeSettings();
 

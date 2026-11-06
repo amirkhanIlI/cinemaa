@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import json
 import base64
+import asyncio
 import logging
 import urllib.parse
 from typing import Optional
@@ -27,6 +28,8 @@ logger = logging.getLogger(__name__)
 MIRRORS = [
     "https://lv.hdrezka.inc",
     "https://kz.rezka.biz",
+    "https://hdrezka.me",
+    "https://rezka.ag",
 ]
 
 HEADERS = {
@@ -55,42 +58,50 @@ KNOWN_SLUGS = {
 class RezkaClient:
     def __init__(self):
         self._cffi_session = None
+        self._cffi_loop = None
         self._httpx_client = None
+        self._httpx_loop = None
 
     async def get(self, url: str, headers: Optional[dict] = None, timeout: float = 12.0):
         h = dict(HEADERS)
         if headers:
             h.update(headers)
+        curr_loop = asyncio.get_running_loop()
         if HAS_CURL_CFFI:
-            if not self._cffi_session:
-                self._cffi_session = AsyncSession(impersonate="chrome124")
+            if not self._cffi_session or self._cffi_loop != curr_loop:
+                self._cffi_session = AsyncSession(impersonate="chrome124", loop=curr_loop)
+                self._cffi_loop = curr_loop
             return await self._cffi_session.get(url, headers=h, timeout=timeout)
         else:
-            if not self._httpx_client or self._httpx_client.is_closed:
+            if not self._httpx_client or self._httpx_client.is_closed or self._httpx_loop != curr_loop:
                 import httpx
                 self._httpx_client = httpx.AsyncClient(
                     headers=HEADERS,
                     timeout=httpx.Timeout(timeout, connect=6.0),
                     follow_redirects=True,
                 )
+                self._httpx_loop = curr_loop
             return await self._httpx_client.get(url, headers=h)
 
     async def post(self, url: str, json: Optional[dict] = None, headers: Optional[dict] = None, timeout: float = 12.0):
         h = dict(HEADERS)
         if headers:
             h.update(headers)
+        curr_loop = asyncio.get_running_loop()
         if HAS_CURL_CFFI:
-            if not self._cffi_session:
-                self._cffi_session = AsyncSession(impersonate="chrome124")
+            if not self._cffi_session or self._cffi_loop != curr_loop:
+                self._cffi_session = AsyncSession(impersonate="chrome124", loop=curr_loop)
+                self._cffi_loop = curr_loop
             return await self._cffi_session.post(url, json=json, headers=h, timeout=timeout)
         else:
-            if not self._httpx_client or self._httpx_client.is_closed:
+            if not self._httpx_client or self._httpx_client.is_closed or self._httpx_loop != curr_loop:
                 import httpx
                 self._httpx_client = httpx.AsyncClient(
                     headers=HEADERS,
                     timeout=httpx.Timeout(timeout, connect=6.0),
                     follow_redirects=True,
                 )
+                self._httpx_loop = curr_loop
             return await self._httpx_client.post(url, json=json, headers=h)
 
     async def close(self):

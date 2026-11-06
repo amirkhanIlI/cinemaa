@@ -185,7 +185,6 @@ async def api_stream(
             except Exception as e:
                 logger.exception("Rezka stream error")
                 stream_data = {"error": f"Rezka: {e}"}
-            return stream_data
 
         # Железный авто-фоллбэк: если kodik/rezka выдали ошибку или пустой результат,
         # сервер сам мгновенно переключается на рабочий Collaps, чтобы видео ВСЕГДА играло!

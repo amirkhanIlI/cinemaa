@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import asyncio
 from typing import Optional
 import httpx
 
@@ -30,14 +31,17 @@ COLLAPS_HEADERS = {
 }
 
 _client: Optional[httpx.AsyncClient] = None
+_client_loop = None
 
 async def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None or _client.is_closed:
+    global _client, _client_loop
+    curr_loop = asyncio.get_running_loop()
+    if _client is None or _client.is_closed or _client_loop != curr_loop:
         _client = httpx.AsyncClient(
             timeout=httpx.Timeout(12.0, connect=6.0),
             follow_redirects=True,
         )
+        _client_loop = curr_loop
     return _client
 
 async def close_client():

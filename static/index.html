@@ -10,7 +10,7 @@
     <link rel="manifest" href="/static/manifest.json">
     <link rel="icon" href="/static/icons/icon-192.png" type="image/png">
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-    <link rel="stylesheet" href="/static/css/style.css?v=10">
+    <link rel="stylesheet" href="/static/css/style.css?v=11">
     <!-- HLS.js для воспроизведения m3u8 потоков -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
 </head>
@@ -98,16 +98,61 @@
 
             <!-- Серии (для сериалов) -->
             <div id="episodes-section" class="hidden">
-                <h3 class="section-title">Серии</h3>
+                <div class="section-header-flex">
+                    <h3 class="section-title">Серии</h3>
+                    <span class="episodes-hint">Тап — смотреть · 📥 — скачать</span>
+                </div>
                 <div id="episodes-list" class="episode-grid"></div>
             </div>
 
-            <!-- Кнопка воспроизведения (для фильмов) -->
-            <button id="btn-play-movie" class="btn-play hidden">
-                <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg>
-                Смотреть
-            </button>
+            <!-- Кнопки воспроизведения и скачивания (для фильмов) -->
+            <div class="movie-actions">
+                <button id="btn-play-movie" class="btn-play hidden">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg>
+                    Смотреть
+                </button>
+                <button id="btn-download-movie" class="btn-play btn-play-outline hidden">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    <span id="btn-download-movie-text">Скачать фильм</span>
+                </button>
+            </div>
         </div>
+    </div>
+
+    <!-- ============== ЭКРАН: Скачанные (Офлайн) ============== -->
+    <div id="screen-downloads" class="screen">
+        <header class="downloads-header">
+            <div class="downloads-header-left">
+                <h1 class="header-main-title">📥 Скачанные</h1>
+                <span id="downloads-storage-size" class="badge">0 МБ</span>
+            </div>
+        </header>
+
+        <!-- Активные загрузки в процессе -->
+        <section id="active-downloads-section" class="section hidden">
+            <h2 class="section-title">⏳ Загружаются сейчас</h2>
+            <div id="active-downloads-list" class="downloads-active-list"></div>
+        </section>
+
+        <!-- Список сохранённых серий и фильмов -->
+        <section id="saved-downloads-section" class="section">
+            <h2 class="section-title">✅ Доступно без интернета</h2>
+            <div id="saved-downloads-list" class="downloads-cards-list"></div>
+        </section>
+
+        <!-- Пустое состояние -->
+        <section id="downloads-empty" class="section">
+            <div class="empty-hero">
+                <div class="empty-icon">📥</div>
+                <h2>Нет скачанных серий</h2>
+                <p>Нажмите значок 📥 рядом с серией, чтобы смотреть любимые сериалы в дороге или без интернета (как в Telegram/Netflix, галерея не засоряется).</p>
+                <button id="btn-goto-cinema" class="btn-play btn-inline">Перейти к сериалам</button>
+            </div>
+        </section>
     </div>
 
     <!-- ============== ЭКРАН: Плеер ============== -->
@@ -267,9 +312,32 @@
         </div>
     </div>
 
+    <!-- ============== Нижняя навигация (iOS Tab Bar) ============== -->
+    <nav id="bottom-nav" class="bottom-nav">
+        <button id="nav-btn-home" class="nav-item active" data-tab="home">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+            <span class="nav-label">Кино</span>
+        </button>
+        <button id="nav-btn-downloads" class="nav-item" data-tab="downloads">
+            <div class="nav-icon-wrap">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span id="nav-downloads-badge" class="nav-badge hidden">0</span>
+            </div>
+            <span class="nav-label">Скачанные</span>
+        </button>
+    </nav>
+
     <!-- Скрипты -->
-    <script src="/static/js/storage.js?v=10"></script>
-    <script src="/static/js/player.js?v=10"></script>
-    <script src="/static/js/app.js?v=10"></script>
+    <script src="/static/js/storage.js?v=11"></script>
+    <script src="/static/js/offline.js?v=11"></script>
+    <script src="/static/js/player.js?v=11"></script>
+    <script src="/static/js/app.js?v=11"></script>
 </body>
 </html>

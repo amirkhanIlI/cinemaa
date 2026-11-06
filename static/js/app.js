@@ -1,40 +1,54 @@
 /**
  * app.js — Основная логика приложения Clean Cinema V2
  *
- * Управляет навигацией между экранами, поиском, отображением деталей,
- * названиями серий (TMDB), переключением балансеров (Collaps, Kodik, Rezka),
- * мгновенным запуском из «Продолжить просмотр» и автопереходом серий.
+ * Управляет навигацией между экранами, поиском, деталями, названиями серий (TMDB),
+ * переключением балансеров (Collaps, Kodik, Rezka), «Продолжить просмотр»,
+ * автопереходом серий и ПОЛНОЙ ОФЛАЙН-СИСТЕМОЙ (Скачивание в память браузера).
  */
 
 const CinemaApp = (() => {
     // ─── DOM элементы ───
-    const screenHome      = document.getElementById('screen-home');
-    const screenDetails   = document.getElementById('screen-details');
-    const searchInput     = document.getElementById('search-input');
-    const searchClear     = document.getElementById('search-clear');
-    const continueSection = document.getElementById('continue-section');
-    const continueList    = document.getElementById('continue-list');
-    const trendingSection = document.getElementById('trending-section');
-    const trendingList    = document.getElementById('trending-list');
-    const resultsSection  = document.getElementById('results-section');
-    const resultsList     = document.getElementById('results-list');
-    const emptyState      = document.getElementById('empty-state');
-    const spinner         = document.getElementById('loading-spinner');
+    const screenHome           = document.getElementById('screen-home');
+    const screenDetails        = document.getElementById('screen-details');
+    const screenDownloads      = document.getElementById('screen-downloads');
+    const searchInput          = document.getElementById('search-input');
+    const searchClear          = document.getElementById('search-clear');
+    const continueSection      = document.getElementById('continue-section');
+    const continueList         = document.getElementById('continue-list');
+    const trendingSection      = document.getElementById('trending-section');
+    const trendingList         = document.getElementById('trending-list');
+    const resultsSection       = document.getElementById('results-section');
+    const resultsList          = document.getElementById('results-list');
+    const emptyState           = document.getElementById('empty-state');
+    const spinner              = document.getElementById('loading-spinner');
 
-    const btnBack         = document.getElementById('btn-back');
-    const detailsTitle    = document.getElementById('details-title');
-    const detailsPoster   = document.getElementById('details-poster');
-    const detailsYear     = document.getElementById('details-year');
-    const detailsRating   = document.getElementById('details-rating');
-    const detailsType     = document.getElementById('details-type');
-    const detailsOrigTitle= document.getElementById('details-orig-title');
-    const detailsDesc     = document.getElementById('details-description');
-    const translatorsList = document.getElementById('translators-list');
-    const seasonsSection  = document.getElementById('seasons-section');
-    const seasonsList     = document.getElementById('seasons-list');
-    const episodesSection = document.getElementById('episodes-section');
-    const episodesList    = document.getElementById('episodes-list');
-    const btnPlayMovie    = document.getElementById('btn-play-movie');
+    const btnBack              = document.getElementById('btn-back');
+    const detailsTitle         = document.getElementById('details-title');
+    const detailsPoster        = document.getElementById('details-poster');
+    const detailsYear          = document.getElementById('details-year');
+    const detailsRating        = document.getElementById('details-rating');
+    const detailsType          = document.getElementById('details-type');
+    const detailsOrigTitle     = document.getElementById('details-orig-title');
+    const detailsDesc          = document.getElementById('details-description');
+    const translatorsList      = document.getElementById('translators-list');
+    const seasonsSection       = document.getElementById('seasons-section');
+    const seasonsList          = document.getElementById('seasons-list');
+    const episodesSection      = document.getElementById('episodes-section');
+    const episodesList         = document.getElementById('episodes-list');
+    const btnPlayMovie         = document.getElementById('btn-play-movie');
+    const btnDownloadMovie     = document.getElementById('btn-download-movie');
+
+    // Навигация (Bottom Bar) и Офлайн
+    const navBtnHome           = document.getElementById('nav-btn-home');
+    const navBtnDownloads      = document.getElementById('nav-btn-downloads');
+    const navDownloadsBadge    = document.getElementById('nav-downloads-badge');
+    const downloadsStorageSize = document.getElementById('downloads-storage-size');
+    const activeDownloadsSection = document.getElementById('active-downloads-section');
+    const activeDownloadsList  = document.getElementById('active-downloads-list');
+    const savedDownloadsSection= document.getElementById('saved-downloads-section');
+    const savedDownloadsList   = document.getElementById('saved-downloads-list');
+    const downloadsEmpty       = document.getElementById('downloads-empty');
+    const btnGotoCinema        = document.getElementById('btn-goto-cinema');
 
     // ─── Состояние ───
     let currentDetails     = null; // MediaDetails из API
@@ -44,18 +58,11 @@ const CinemaApp = (() => {
     let searchTimeout      = null;
     let episodeNamesCache  = {};   // { [season]: { [episode]: "Title" } }
     let pendingResume      = null; // объект для мгновенного запуска из истории
+    let activeTab          = 'home';
 
     // ─── Инициализация ───
 
     function init() {
-        // Автоматическое лечение: если в хранилище застрял неработающий балансер, сразу сбрасываем на collaps
-        try {
-            const savedBal = localStorage.getItem('cinema_preferred_balancer');
-            if (savedBal && savedBal !== 'collaps') {
-                localStorage.setItem('cinema_preferred_balancer', 'collaps');
-            }
-        } catch {}
-
         // Поиск с дебаунсом
         searchInput.addEventListener('input', () => {
             const q = searchInput.value.trim();
@@ -81,7 +88,7 @@ const CinemaApp = (() => {
         });
 
         // Кнопка Назад (из деталей на главную)
-        btnBack.addEventListener('click', showHome);
+        btnBack.addEventListener('click', () => switchTab('home'));
 
         // Кнопка «Смотреть» (для фильмов)
         btnPlayMovie.addEventListener('click', () => {
@@ -90,12 +97,63 @@ const CinemaApp = (() => {
             }
         });
 
+        // Кнопка «Скачать фильм» (для фильмов)
+        if (btnDownloadMovie) {
+            btnDownloadMovie.addEventListener('click', () => {
+                startMovieDownload();
+            });
+        }
+
+        // Переключение табов нижней навигации
+        if (navBtnHome) {
+            navBtnHome.addEventListener('click', () => switchTab('home'));
+        }
+        if (navBtnDownloads) {
+            navBtnDownloads.addEventListener('click', () => switchTab('downloads'));
+        }
+        if (btnGotoCinema) {
+            btnGotoCinema.addEventListener('click', () => switchTab('home'));
+        }
+
+        // События офлайн-загрузок
+        window.addEventListener('downloads-updated', () => {
+            updateDownloadsBadge();
+            if (activeTab === 'downloads') {
+                renderDownloadsScreen();
+            }
+            updateEpisodeChipsStatus();
+        });
+
+        window.addEventListener('download-progress', (e) => {
+            handleDownloadProgress(e.detail);
+        });
+
+        window.addEventListener('download-completed', (e) => {
+            showToast(`Загрузка завершена: ${e.detail?.title || 'Серия'}`);
+            updateDownloadsBadge();
+            if (activeTab === 'downloads') renderDownloadsScreen();
+            updateEpisodeChipsStatus();
+        });
+
+        window.addEventListener('download-error', (e) => {
+            showToast(`Ошибка скачивания: ${e.detail?.error || 'Сбой'}`);
+            updateEpisodeChipsStatus();
+        });
+
+        // Детекция офлайн-режима
+        window.addEventListener('offline', () => {
+            showToast('📡 Режим офлайн: доступно воспроизведение из «Скачанных»');
+            if (activeTab !== 'downloads' && !document.body.classList.contains('player-active')) {
+                switchTab('downloads');
+            }
+        });
+
         // События плеера
         window.addEventListener('player-closed', () => {
             loadContinueWatching();
-            // Обновляем выделение серий на экране деталей
             if (currentDetails && currentDetails.type === 'series') {
                 highlightWatchedEpisodes();
+                updateEpisodeChipsStatus();
             }
         });
 
@@ -145,11 +203,12 @@ const CinemaApp = (() => {
             await playStream('rezka', voiceShort);
         });
 
-        // Загрузка популярных сериалов и истории
+        // Загрузка популярных сериалов, истории и бейджа скачанных
         loadTrendingSeries();
         CinemaStorage.syncWithServer().then(() => {
             loadContinueWatching();
         });
+        updateDownloadsBadge();
 
         // PWA Service Worker
         if ('serviceWorker' in navigator) {
@@ -157,9 +216,35 @@ const CinemaApp = (() => {
         }
     }
 
-    // ─── Навигация ───
+    // ─── Навигация по табам ───
+
+    function switchTab(tab) {
+        activeTab = tab;
+        if (tab === 'home') {
+            if (navBtnHome) navBtnHome.classList.add('active');
+            if (navBtnDownloads) navBtnDownloads.classList.remove('active');
+            if (screenDownloads) screenDownloads.classList.remove('active');
+
+            if (currentDetails) {
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                screenDetails.classList.add('active');
+            } else {
+                showHome();
+            }
+        } else if (tab === 'downloads') {
+            if (navBtnDownloads) navBtnDownloads.classList.add('active');
+            if (navBtnHome) navBtnHome.classList.remove('active');
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            if (screenDownloads) screenDownloads.classList.add('active');
+            renderDownloadsScreen();
+        }
+    }
 
     function showHome() {
+        activeTab = 'home';
+        currentDetails = null;
+        if (navBtnHome) navBtnHome.classList.add('active');
+        if (navBtnDownloads) navBtnDownloads.classList.remove('active');
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         screenHome.classList.add('active');
         loadContinueWatching();
@@ -202,11 +287,6 @@ const CinemaApp = (() => {
         } catch (e) {
             console.warn('[Trending] failed to load:', e);
         }
-    }
-
-    function showDetails() {
-        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-        screenDetails.classList.add('active');
     }
 
     // ─── Поиск ───
@@ -302,291 +382,263 @@ const CinemaApp = (() => {
                                 });
                             }
                             data.translators = existingTranslators;
-                        } catch (err) {
-                            console.error('[Collaps Client] seasons parse error:', err);
+                        } catch (e) {
+                            console.warn('[Collaps Client] failed to parse seasons JSON:', e);
                         }
                     }
                     break;
                 }
             }
-        } else {
-            const audioMatch = html.match(/audio\s*:\s*(\{.*?\})\s*,\s*subtitles/);
-            if (audioMatch) {
-                try {
-                    const audData = JSON.parse(audioMatch[1]);
-                    const names = audData.names || [];
-                    if (names.length > 0) {
-                        data.translators = names.map((name, idx) => ({ id: idx, name }));
-                    }
-                } catch (e) {}
-            }
-        }
-
-        // Для сериалов гарантируем наличие TVShows и LostFilm
-        if (data.type === 'series') {
-            if (!data.translators) data.translators = [];
-            const hasTvshows = data.translators.some(t => t.name.toLowerCase().includes('tvshows'));
-            if (!hasTvshows) {
-                data.translators.unshift({
-                    id: 'rezka_3',
-                    name: 'TVShows (Проф. многоголосый)',
-                    source: 'rezka',
-                    rezka_id: 3,
-                    rezka_voice: 'TVShows',
-                });
-            }
-            const hasLostfilm = data.translators.some(t => t.name.toLowerCase().includes('lostfilm'));
-            if (!hasLostfilm) {
-                data.translators.splice(1, 0, {
-                    id: 'rezka_0',
-                    name: 'LostFilm (Проф. многоголосый)',
-                    source: 'rezka',
-                    rezka_id: 0,
-                    rezka_voice: 'LostFilm',
-                });
-            }
         }
     }
 
-    async function fetchClientSideStream(imdbId, mediaType, season, episode, translatorId) {
-        const html = await fetchCollapsHtml(imdbId);
-        if (!html) return null;
+    async function fetchClientSideStream(imdbId, type, season = null, episode = null, voiceName = null) {
+        try {
+            const html = await fetchCollapsHtml(imdbId);
+            if (!html) return null;
 
-        let tokenVal = '';
-        const tokenMatch = html.match(/var\s+lok\s*=\s*1\s*,\s*([a-f0-9]+)\s*=\s*["']([^"']+)["']/);
-        if (tokenMatch) {
-            tokenVal = tokenMatch[2];
-        }
+            let hlsPath = null;
+            let audioNames = [];
 
-        let baseHls = '';
-        let audioTracks = [];
-
-        if (mediaType === 'series' && season != null && episode != null) {
-            for (const line of html.split('\n')) {
-                if (line.includes('seasons:[{') || line.includes('seasons: [{')) {
-                    const m = line.match(/seasons\s*:\s*(\[\s*\{.*\}\s*\])/);
-                    if (m) {
-                        try {
+            if (type === 'series') {
+                for (const line of html.split('\n')) {
+                    if (line.includes('seasons:[{') || line.includes('seasons: [{')) {
+                        const m = line.match(/seasons\s*:\s*(\[\s*\{.*\}\s*\])/);
+                        if (m) {
                             const sList = JSON.parse(m[1]);
-                            for (const s of sList) {
-                                if (parseInt(s.season) === parseInt(season)) {
-                                    for (const ep of (s.episodes || [])) {
-                                        if (parseInt(ep.episode) === parseInt(episode)) {
-                                            baseHls = ep.hls || '';
-                                            audioTracks = ep.audio?.names || [];
-                                            break;
-                                        }
-                                    }
+                            const sObj = sList.find(s => s.season == season) || sList[0];
+                            if (sObj && sObj.episodes) {
+                                const epObj = sObj.episodes.find(e => e.episode == episode) || sObj.episodes[0];
+                                if (epObj) {
+                                    hlsPath = epObj.hls;
+                                    audioNames = epObj.audio?.names || [];
                                 }
                             }
-                        } catch (err) {}
+                        }
+                        break;
                     }
-                    break;
+                }
+            } else {
+                const hlsMatch = html.match(/hls\s*:\s*['"]([^'"]+)['"]/);
+                if (hlsMatch) hlsPath = hlsMatch[1];
+                const audMatch = html.match(/audio\s*:\s*(\{.*?\})\s*,\s*subtitles/s);
+                if (audMatch) {
+                    try {
+                        const aud = JSON.parse(audMatch[1]);
+                        audioNames = aud.names || [];
+                    } catch {}
                 }
             }
-        } else {
-            const hlsMatch = html.match(/hls\s*:\s*["']([^"']+)["']/);
-            if (hlsMatch) {
-                baseHls = hlsMatch[1];
+
+            if (!hlsPath) return null;
+
+            let hostMatch = html.match(/masterHost\s*:\s*['"]([^'"]+)['"]/);
+            let host = hostMatch ? hostMatch[1] : 'stream.voidboost.cc';
+            if (host.startsWith('http://') || host.startsWith('https://')) {
+                try { host = new URL(host).host; } catch {}
             }
-            const audioMatch = html.match(/audio\s*:\s*(\{.*?\})\s*,\s*subtitles/);
-            if (audioMatch) {
-                try {
-                    const audData = JSON.parse(audioMatch[1]);
-                    audioTracks = audData.names || [];
-                } catch (e) {}
+            if (!host) host = 'stream.voidboost.cc';
+
+            let baseHls = hlsPath.startsWith('http') ? hlsPath : `https://${host}${hlsPath}`;
+
+            const tokenMatch = html.match(/makeToken\s*=\s*['"]([^'"]+)['"]/);
+            if (tokenMatch) {
+                baseHls += (baseHls.includes('?') ? '&' : '?') + tokenMatch[1];
             }
+
+            const streams = {
+                'Auto (1080p/720p)': baseHls,
+                '1080p': baseHls,
+                '720p': baseHls,
+                '480p': baseHls,
+                '360p': baseHls,
+            };
+
+            let selIdx = 0;
+            if (voiceName && audioNames.length > 0) {
+                const found = audioNames.findIndex(n => n.toLowerCase().includes(voiceName.toLowerCase()));
+                if (found !== -1) selIdx = found;
+            }
+
+            return {
+                streams,
+                hls_url: baseHls,
+                audio_tracks: audioNames,
+                selected_audio_index: selIdx,
+                source: 'collaps',
+            };
+        } catch (e) {
+            console.error('[Collaps Client] fetch error:', e);
+            return null;
         }
-
-        if (!baseHls) return null;
-
-        let finalHls = baseHls;
-        if (tokenVal) {
-            finalHls += (finalHls.includes('?') ? '&' : '?') + tokenVal;
-        }
-
-        const streams = {
-            'Auto (1080p/720p)': finalHls,
-            '1080p': finalHls,
-            '720p': finalHls,
-            '480p': finalHls,
-            '360p': finalHls,
-        };
-
-        return {
-            streams: streams,
-            hls_url: finalHls,
-            audio_tracks: audioTracks,
-            selected_audio_index: translatorId || 0,
-        };
     }
 
-    // ─── Загрузка названий серий из TMDB ───
+    // ─── Загрузка деталей и названий серий TMDB ───
 
-    async function loadEpisodeNames(tvId, season) {
-        if (!tvId || !season) return;
-        const cacheKey = `${tvId}_s${season}`;
-        if (episodeNamesCache[cacheKey]) return episodeNamesCache[cacheKey];
+    async function loadEpisodeNames(filmId, season) {
+        const cacheKey = `${filmId}_s${season}`;
+        if (episodeNamesCache[cacheKey]) return;
 
         try {
-            const resp = await fetch(`/api/episodes?tv_id=${encodeURIComponent(tvId)}&season=${season}`);
-            if (resp.ok) {
-                const data = await resp.json();
-                if (data.episodes) {
-                    episodeNamesCache[cacheKey] = data.episodes;
-                    return data.episodes;
-                }
+            const resp = await fetch(`/api/episodes?tv_id=${encodeURIComponent(filmId)}&season=${encodeURIComponent(season)}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.episodes) {
+                episodeNamesCache[cacheKey] = data.episodes;
             }
         } catch (e) {
-            console.warn('[TMDB episodes] load failed:', e);
+            console.warn('[TMDB] failed to fetch episode names:', e);
         }
-        return {};
     }
 
-    // ─── Детали фильма / сериала ───
-
-    async function openDetails(url, autoPlayResume = false) {
-        showDetails();
+    async function openDetails(url, autoPlay = false) {
         spinner.classList.remove('hidden');
-
         try {
             const resp = await fetch(`/api/details?url=${encodeURIComponent(url)}`);
             const data = await resp.json();
             currentDetails = data;
 
-            // Если пустые сезоны из-за 410 Render IP, парсим через клиентский браузер
-            if (data.imdb_id && ((data.type === 'series' && (!data.seasons || Object.keys(data.seasons).length === 0)) || (!data.translators || data.translators.length <= 1))) {
+            activeTab = 'home';
+            if (navBtnHome) navBtnHome.classList.add('active');
+            if (navBtnDownloads) navBtnDownloads.classList.remove('active');
+
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            screenDetails.classList.add('active');
+
+            if (data.type === 'series' && (!data.seasons || Object.keys(data.seasons).length === 0)) {
                 await enrichDetailsClientSide(data);
             }
 
-            // Заполняем UI
-            detailsTitle.textContent = data.title;
-            detailsPoster.src = data.poster_url;
-            detailsYear.textContent = data.year || '';
-            detailsRating.textContent = data.rating ? `★ ${data.rating}` : '';
-            detailsRating.classList.toggle('hidden', !data.rating);
-            detailsType.textContent = typeLabel(data.type);
-            detailsOrigTitle.textContent = data.orig_title || '';
-            detailsDesc.textContent = data.description || '';
+            await renderDetails(data);
 
-            // Приоритетная сортировка: TVShows и LostFilm первыми!
-            if (data.translators && data.translators.length > 0) {
-                data.translators.sort((a, b) => {
-                    const aName = (a.name || '').toLowerCase();
-                    const bName = (b.name || '').toLowerCase();
-                    const aScore = aName.includes('tvshows') ? 0 : (aName.includes('lostfilm') ? 1 : 2);
-                    const bScore = bName.includes('tvshows') ? 0 : (bName.includes('lostfilm') ? 1 : 2);
-                    return aScore - bScore;
-                });
-            }
-
-            // Озвучки
-            translatorsList.innerHTML = '';
-            selectedTranslator = null;
-            if (data.translators && data.translators.length > 0) {
-                const saved = pendingResume || CinemaStorage.get(data.id);
-                const savedTid = saved ? saved.translatorId : null;
-                const savedTName = saved ? saved.translatorName : null;
-
-                for (const t of data.translators) {
-                    const chip = document.createElement('button');
-                    chip.className = 'chip';
-                    chip.textContent = t.name;
-                    chip.dataset.id = t.id;
-
-                    chip.addEventListener('click', () => selectTranslator(t));
-
-                    const isMatch = (t.id === savedTid) || (savedTName && t.name.toLowerCase().includes(savedTName.toLowerCase()));
-                    if (isMatch || (!savedTid && !savedTName && !selectedTranslator)) {
-                        chip.classList.add('active');
-                        selectedTranslator = t;
-                    }
-
-                    translatorsList.appendChild(chip);
-                }
-
-                if (!selectedTranslator && data.translators.length > 0) {
-                    selectedTranslator = data.translators[0];
-                    translatorsList.children[0]?.classList.add('active');
-                }
-            }
-
-            // Сезоны и серии
-            if (data.type === 'series' && data.seasons && Object.keys(data.seasons).length > 0) {
-                seasonsSection.classList.remove('hidden');
-                episodesSection.classList.remove('hidden');
-                btnPlayMovie.classList.add('hidden');
-
-                await renderSeasons(data.seasons);
-            } else {
-                seasonsSection.classList.add('hidden');
-                episodesSection.classList.add('hidden');
-                btnPlayMovie.classList.remove('hidden');
-            }
-
-            // Мгновенный запуск при клике из «Продолжить просмотр»
-            if (autoPlayResume && pendingResume) {
-                const resumeTarget = pendingResume;
-                pendingResume = null;
-                if (resumeTarget.season) selectedSeason = resumeTarget.season;
-                if (resumeTarget.episode) selectedEpisode = resumeTarget.episode;
-                playStream();
+            if (autoPlay && pendingResume) {
+                await playStream();
             }
         } catch (e) {
-            console.error('Details failed:', e);
+            console.error('Details fetch error:', e);
+            alert('Не удалось загрузить данные фильма');
         } finally {
             spinner.classList.add('hidden');
         }
     }
 
-    function selectTranslator(translator) {
-        selectedTranslator = translator;
-        translatorsList.querySelectorAll('.chip').forEach(c => {
-            c.classList.toggle('active', c.dataset.id == translator.id);
-        });
+    async function renderDetails(data) {
+        detailsTitle.textContent = data.title || '';
+        detailsPoster.src = data.poster_url || '';
+        detailsYear.textContent = data.year || '';
+        detailsRating.textContent = data.rating ? `★ ${data.rating}` : '';
+        detailsType.textContent = typeLabel(data.type);
+        detailsOrigTitle.textContent = data.original_title || '';
+        detailsDesc.textContent = data.description || '';
 
-        // Если выбрана озвучка Rezka (TVShows или LostFilm), сразу включаем Rezka как источник
-        if (translator.source === 'rezka' || String(translator.id).includes('rezka') || translator.rezka_voice) {
-            localStorage.setItem('cinema_preferred_balancer', 'rezka');
-            if (window.CinemaPlayer) CinemaPlayer.setActiveBalancer('rezka');
-        } else {
-            localStorage.setItem('cinema_preferred_balancer', 'collaps');
-            if (window.CinemaPlayer) CinemaPlayer.setActiveBalancer('collaps');
+        // Приоритетная сортировка: TVShows и LostFilm первыми!
+        if (data.translators && data.translators.length > 0) {
+            data.translators.sort((a, b) => {
+                const aName = (a.name || '').toLowerCase();
+                const bName = (b.name || '').toLowerCase();
+                const aScore = aName.includes('tvshows') ? 0 : (aName.includes('lostfilm') ? 1 : 2);
+                const bScore = bName.includes('tvshows') ? 0 : (bName.includes('lostfilm') ? 1 : 2);
+                return aScore - bScore;
+            });
         }
+
+        // Озвучки
+        translatorsList.innerHTML = '';
+        selectedTranslator = null;
+        if (data.translators && data.translators.length > 0) {
+            const saved = pendingResume || CinemaStorage.get(data.id);
+            const savedTid = saved ? saved.translatorId : null;
+            const savedTName = saved ? saved.translatorName : null;
+
+            for (const t of data.translators) {
+                const chip = document.createElement('button');
+                chip.className = 'chip';
+                chip.textContent = t.name;
+                chip.dataset.id = t.id;
+
+                chip.addEventListener('click', () => selectTranslator(t));
+
+                const isMatch = (t.id === savedTid) || (savedTName && t.name.toLowerCase().includes(savedTName.toLowerCase()));
+                if (isMatch || (!savedTid && !savedTName && !selectedTranslator)) {
+                    chip.classList.add('active');
+                    selectedTranslator = t;
+                }
+
+                translatorsList.appendChild(chip);
+            }
+
+            if (!selectedTranslator && data.translators.length > 0) {
+                selectedTranslator = data.translators[0];
+                translatorsList.children[0]?.classList.add('active');
+            }
+        }
+
+        // Сезоны и серии
+        if (data.type === 'series' && data.seasons && Object.keys(data.seasons).length > 0) {
+            seasonsSection.classList.remove('hidden');
+            episodesSection.classList.remove('hidden');
+            btnPlayMovie.classList.add('hidden');
+            if (btnDownloadMovie) btnDownloadMovie.classList.add('hidden');
+
+            await renderSeasons(data.seasons);
+        } else {
+            seasonsSection.classList.add('hidden');
+            episodesSection.classList.add('hidden');
+            btnPlayMovie.classList.remove('hidden');
+            if (btnDownloadMovie) {
+                btnDownloadMovie.classList.remove('hidden');
+                const dlId = `${data.id}_movie`;
+                const isDl = await OfflineManager.isDownloaded(dlId);
+                const dlTxt = document.getElementById('btn-download-movie-text');
+                if (dlTxt) dlTxt.textContent = isDl ? '✓ Скачано офлайн' : 'Скачать фильм';
+            }
+        }
+    }
+
+    function selectTranslator(t) {
+        selectedTranslator = t;
+        translatorsList.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        const chip = translatorsList.querySelector(`.chip[data-id="${t.id}"]`);
+        if (chip) chip.classList.add('active');
+        updateEpisodeChipsStatus();
     }
 
     async function renderSeasons(seasons) {
         seasonsList.innerHTML = '';
-        const keys = Object.keys(seasons).sort((a, b) => parseInt(a) - parseInt(b));
+        const seasonKeys = Object.keys(seasons).sort((a, b) => parseInt(a) - parseInt(b));
+        if (seasonKeys.length === 0) return;
 
         const saved = pendingResume || CinemaStorage.get(currentDetails.id);
-        const savedSeason = saved ? saved.season : null;
-        let firstSeason = savedSeason && keys.includes(String(savedSeason))
-                        ? String(savedSeason)
-                        : keys[0];
+        const savedSeason = saved ? String(saved.season) : seasonKeys[0];
 
-        for (const sKey of keys) {
+        selectedSeason = parseInt(savedSeason) || parseInt(seasonKeys[0]);
+
+        for (const s of seasonKeys) {
             const chip = document.createElement('button');
             chip.className = 'chip';
-            chip.textContent = `Сезон ${sKey}`;
-            chip.dataset.season = sKey;
+            chip.textContent = `${s} сезон`;
+            chip.dataset.season = s;
+
+            if (s === String(selectedSeason)) {
+                chip.classList.add('active');
+            }
 
             chip.addEventListener('click', async () => {
-                selectedSeason = parseInt(sKey);
+                selectedSeason = parseInt(s);
                 seasonsList.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
                 chip.classList.add('active');
-                await renderEpisodes(seasons[sKey]);
+                await renderEpisodes(seasons[s]);
             });
-
-            if (sKey === firstSeason) {
-                chip.classList.add('active');
-                selectedSeason = parseInt(sKey);
-            }
 
             seasonsList.appendChild(chip);
         }
 
-        if (firstSeason && seasons[firstSeason]) {
+        const activeKey = String(selectedSeason);
+        if (seasons[activeKey]) {
+            await renderEpisodes(seasons[activeKey]);
+        } else {
+            const firstSeason = seasonKeys[0];
+            selectedSeason = parseInt(firstSeason);
             await renderEpisodes(seasons[firstSeason]);
         }
     }
@@ -602,24 +654,70 @@ const CinemaApp = (() => {
         }
 
         for (const ep of episodes) {
-            const btn = document.createElement('button');
-            btn.className = 'episode-btn';
-            btn.textContent = ep;
-            btn.dataset.episode = ep;
+            const chip = document.createElement('div');
+            chip.className = 'episode-chip';
+            chip.dataset.episode = ep;
 
             if (saved && saved.season == selectedSeason && saved.episode == ep) {
-                btn.classList.add('active');
+                chip.classList.add('active');
                 selectedEpisode = ep;
             }
 
-            btn.addEventListener('click', () => {
+            // Зона нажатия для воспроизведения
+            const playZone = document.createElement('div');
+            playZone.className = 'ep-play-zone';
+            playZone.textContent = ep;
+            playZone.addEventListener('click', () => {
                 selectedEpisode = ep;
-                episodesList.querySelectorAll('.episode-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
+                episodesList.querySelectorAll('.episode-chip').forEach(b => b.classList.remove('active'));
+                chip.classList.add('active');
                 playStream();
             });
 
-            episodesList.appendChild(btn);
+            // Зона нажатия для скачивания (офлайн)
+            const dlZone = document.createElement('div');
+            dlZone.className = 'ep-dl-zone';
+            dlZone.dataset.episode = ep;
+            dlZone.title = 'Скачать серию офлайн';
+            dlZone.innerHTML = '📥';
+
+            const dlId = `${currentDetails.id}_s${selectedSeason}_e${ep}`;
+            const isDl = await OfflineManager.isDownloaded(dlId);
+            const isDling = OfflineManager.isDownloading(dlId);
+
+            if (isDl) {
+                chip.classList.add('downloaded');
+                dlZone.classList.add('downloaded');
+                dlZone.innerHTML = '✓';
+                dlZone.title = 'Скачано офлайн';
+            } else if (isDling) {
+                dlZone.classList.add('downloading');
+                const prog = OfflineManager.getActiveProgress(dlId);
+                dlZone.innerHTML = `${prog || 0}%`;
+                dlZone.title = 'Скачивается...';
+            }
+
+            dlZone.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const downloaded = await OfflineManager.isDownloaded(dlId);
+                if (downloaded) {
+                    if (confirm(`Серия ${ep} уже скачана для офлайн-просмотра. Открыть скачанные?`)) {
+                        switchTab('downloads');
+                    }
+                    return;
+                }
+                if (OfflineManager.isDownloading(dlId)) {
+                    if (confirm(`Отменить скачивание ${ep} серии?`)) {
+                        OfflineManager.cancelDownload(dlId);
+                    }
+                    return;
+                }
+                startEpisodeDownload(ep);
+            });
+
+            chip.appendChild(playZone);
+            chip.appendChild(dlZone);
+            episodesList.appendChild(chip);
         }
 
         highlightWatchedEpisodes();
@@ -630,15 +728,386 @@ const CinemaApp = (() => {
         const saved = CinemaStorage.get(currentDetails.id);
         if (!saved) return;
 
-        episodesList.querySelectorAll('.episode-btn').forEach(btn => {
-            const ep = parseInt(btn.dataset.episode);
+        episodesList.querySelectorAll('.episode-chip').forEach(chip => {
+            const ep = parseInt(chip.dataset.episode);
             if (saved.season == selectedSeason && saved.episode == ep && saved.time > 10) {
-                btn.classList.add('watched');
+                chip.classList.add('watched');
             }
         });
     }
 
-    // ─── Запуск потока ───
+    async function updateEpisodeChipsStatus() {
+        if (!currentDetails || !episodesList || currentDetails.type !== 'series') return;
+        const s = selectedSeason;
+        const chips = episodesList.querySelectorAll('.episode-chip');
+        for (const chip of chips) {
+            const ep = chip.dataset.episode;
+            const dlId = `${currentDetails.id}_s${s}_e${ep}`;
+            const isDl = await OfflineManager.isDownloaded(dlId);
+            const isDling = OfflineManager.isDownloading(dlId);
+            const dlZone = chip.querySelector('.ep-dl-zone');
+            if (!dlZone) continue;
+
+            if (isDl) {
+                chip.classList.add('downloaded');
+                dlZone.className = 'ep-dl-zone downloaded';
+                dlZone.textContent = '✓';
+                dlZone.title = 'Скачано офлайн';
+            } else if (isDling) {
+                chip.classList.remove('downloaded');
+                dlZone.className = 'ep-dl-zone downloading';
+                const prog = OfflineManager.getActiveProgress(dlId);
+                dlZone.textContent = `${prog || 0}%`;
+                dlZone.title = 'Скачивается...';
+            } else {
+                chip.classList.remove('downloaded');
+                dlZone.className = 'ep-dl-zone';
+                dlZone.textContent = '📥';
+                dlZone.title = 'Скачать серию офлайн';
+            }
+        }
+    }
+
+    // ─── Запуск загрузки серии или фильма (Офлайн) ───
+
+    async function startEpisodeDownload(ep) {
+        if (!currentDetails) return;
+        const s = selectedSeason;
+        const e = ep;
+        const dlId = `${currentDetails.id}_s${s}_e${e}`;
+
+        const chip = episodesList.querySelector(`.episode-chip[data-episode="${e}"]`);
+        const dlZone = chip?.querySelector('.ep-dl-zone');
+        if (dlZone) {
+            dlZone.className = 'ep-dl-zone downloading';
+            dlZone.textContent = '⏳';
+        }
+
+        let epTitle = `Серия ${e}`;
+        const cacheKey = `${currentDetails.id}_s${s}`;
+        const eps = episodeNamesCache[cacheKey];
+        if (eps && eps[String(e)]) {
+            epTitle = eps[String(e)].name || epTitle;
+        }
+
+        let source = 'collaps';
+        let voiceName = 'TVShows';
+        let tid = 0;
+        if (selectedTranslator) {
+            if (selectedTranslator.source === 'rezka' || String(selectedTranslator.id).startsWith('rezka_')) {
+                source = 'rezka';
+                voiceName = selectedTranslator.rezka_voice || selectedTranslator.name || 'TVShows';
+                tid = selectedTranslator.rezka_id ?? 0;
+            } else {
+                source = localStorage.getItem('cinema_preferred_balancer') || 'collaps';
+                voiceName = selectedTranslator.name || '';
+                tid = selectedTranslator.id;
+            }
+        }
+
+        showToast(`Запуск загрузки: ${currentDetails.title} (S${s}E${e})...`);
+
+        try {
+            let streamUrl = '';
+            let url = `/api/stream?url=${encodeURIComponent(currentDetails.url)}&translator_id=${encodeURIComponent(tid)}&source=${source}&season=${s}&episode=${e}`;
+            if (voiceName) {
+                url += `&preferred_voice=${encodeURIComponent(voiceName)}`;
+            }
+
+            try {
+                const resp = await fetch(url);
+                const data = await resp.json();
+                if (data && data.hls_url) {
+                    streamUrl = data.hls_url;
+                }
+            } catch (netErr) {
+                console.warn('[Offline] Backend stream fetch failed:', netErr);
+            }
+
+            if (!streamUrl && currentDetails.imdb_id) {
+                const clientStream = await fetchClientSideStream(currentDetails.imdb_id, currentDetails.type, s, e, voiceName);
+                if (clientStream && clientStream.hls_url) {
+                    streamUrl = clientStream.hls_url;
+                }
+            }
+
+            if (!streamUrl) {
+                alert(`Не удалось получить видеопоток для скачивания серии ${e}`);
+                if (dlZone) {
+                    dlZone.className = 'ep-dl-zone';
+                    dlZone.textContent = '📥';
+                }
+                return;
+            }
+
+            OfflineManager.startDownload({
+                filmId: currentDetails.id,
+                filmUrl: currentDetails.url,
+                title: currentDetails.title,
+                poster: currentDetails.poster_url,
+                type: 'series',
+                season: s,
+                episode: e,
+                episodeTitle: epTitle,
+                voiceName,
+                streamUrl,
+            });
+
+            updateDownloadsBadge();
+        } catch (err) {
+            console.error('[Offline] Episode download error:', err);
+            alert(`Ошибка при начале загрузки: ${err.message}`);
+            if (dlZone) {
+                dlZone.className = 'ep-dl-zone';
+                dlZone.textContent = '📥';
+            }
+        }
+    }
+
+    async function startMovieDownload() {
+        if (!currentDetails) return;
+        const dlId = `${currentDetails.id}_movie`;
+        const isDl = await OfflineManager.isDownloaded(dlId);
+        if (isDl) {
+            if (confirm(`Фильм «${currentDetails.title}» уже скачан. Открыть вкладку скачанных?`)) {
+                switchTab('downloads');
+            }
+            return;
+        }
+
+        const btnTxt = document.getElementById('btn-download-movie-text');
+        if (btnTxt) btnTxt.textContent = '⏳ Запуск загрузки...';
+
+        let source = 'collaps';
+        let voiceName = selectedTranslator?.name || '';
+        let tid = selectedTranslator ? selectedTranslator.id : 0;
+
+        try {
+            let streamUrl = '';
+            let url = `/api/stream?url=${encodeURIComponent(currentDetails.url)}&translator_id=${encodeURIComponent(tid)}&source=${source}`;
+            if (voiceName) url += `&preferred_voice=${encodeURIComponent(voiceName)}`;
+
+            try {
+                const resp = await fetch(url);
+                const data = await resp.json();
+                if (data && data.hls_url) {
+                    streamUrl = data.hls_url;
+                }
+            } catch (netErr) {
+                console.warn('[Offline] Backend stream fetch failed:', netErr);
+            }
+
+            if (!streamUrl && currentDetails.imdb_id) {
+                const clientStream = await fetchClientSideStream(currentDetails.imdb_id, 'movie', null, null, voiceName);
+                if (clientStream && clientStream.hls_url) {
+                    streamUrl = clientStream.hls_url;
+                }
+            }
+
+            if (!streamUrl) {
+                alert('Не удалось получить видеопоток фильма для скачивания');
+                if (btnTxt) btnTxt.textContent = 'Скачать фильм';
+                return;
+            }
+
+            OfflineManager.startDownload({
+                filmId: currentDetails.id,
+                filmUrl: currentDetails.url,
+                title: currentDetails.title,
+                poster: currentDetails.poster_url,
+                type: 'movie',
+                episodeTitle: 'Полный фильм',
+                voiceName,
+                streamUrl,
+            });
+
+            showToast(`Загрузка фильма «${currentDetails.title}» началась`);
+            updateDownloadsBadge();
+        } catch (err) {
+            alert(`Ошибка: ${err.message}`);
+            if (btnTxt) btnTxt.textContent = 'Скачать фильм';
+        }
+    }
+
+    function handleDownloadProgress(detail) {
+        // Обновляем бейдж на чипе серии
+        if (currentDetails && episodesList && currentDetails.type === 'series') {
+            const chip = episodesList.querySelector(`.episode-chip[data-episode="${detail.episode}"]`);
+            const dlZone = chip?.querySelector('.ep-dl-zone');
+            if (dlZone) {
+                dlZone.textContent = `${detail.progress}%`;
+            }
+        }
+
+        // Обновляем прогресс-бар на экране скачанных
+        if (activeTab === 'downloads') {
+            const card = document.getElementById(`dl-task-${detail.id}`);
+            if (card) {
+                const bar = card.querySelector('.progress-bar-fill');
+                const status = card.querySelector('.dl-status-text');
+                const size = card.querySelector('.dl-size-text');
+                if (bar) bar.style.width = `${detail.progress}%`;
+                if (status) status.textContent = `Загрузка... ${detail.progress}%`;
+                if (size) size.textContent = detail.formattedSize;
+            }
+        }
+    }
+
+    // ─── Отображение экрана «Скачанные» ───
+
+    async function renderDownloadsScreen() {
+        if (!screenDownloads) return;
+
+        // 1. Активные задачи
+        const activeTasks = OfflineManager.getActiveDownloads();
+        if (activeTasks.length > 0) {
+            activeDownloadsSection.classList.remove('hidden');
+            activeDownloadsList.innerHTML = '';
+            for (const t of activeTasks) {
+                const card = document.createElement('div');
+                card.className = 'download-active-card';
+                card.id = `dl-task-${t.id}`;
+                const sub = t.type === 'series'
+                    ? `${t.season} сезон · ${t.episode} серия ${t.episodeTitle ? '· ' + t.episodeTitle : ''}`
+                    : 'Фильм';
+                card.innerHTML = `
+                    <div class="download-active-row">
+                        <div class="download-active-info">
+                            <div class="download-active-title">${escapeHtml(t.title)}</div>
+                            <div class="download-active-subtitle">${escapeHtml(sub)} (${escapeHtml(t.voiceName || 'Озвучка')})</div>
+                        </div>
+                        <button class="btn-cancel-dl" title="Отменить загрузку">✕</button>
+                    </div>
+                    <div class="progress-bar-wrap">
+                        <div class="progress-bar-fill" style="width: ${t.progress || 0}%"></div>
+                    </div>
+                    <div class="progress-meta">
+                        <span class="dl-status-text">Загрузка... ${t.progress || 0}%</span>
+                        <span class="dl-size-text">${OfflineManager.formatBytes(t.downloadedBytes)}</span>
+                    </div>
+                `;
+                card.querySelector('.btn-cancel-dl').addEventListener('click', () => {
+                    OfflineManager.cancelDownload(t.id);
+                });
+                activeDownloadsList.appendChild(card);
+            }
+        } else {
+            activeDownloadsSection.classList.add('hidden');
+            activeDownloadsList.innerHTML = '';
+        }
+
+        // 2. Готовые сохранённые серии и фильмы
+        const items = await OfflineManager.getAll();
+        items.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+
+        if (items.length === 0 && activeTasks.length === 0) {
+            downloadsEmpty.classList.remove('hidden');
+            savedDownloadsSection.classList.add('hidden');
+            savedDownloadsList.innerHTML = '';
+        } else {
+            downloadsEmpty.classList.add('hidden');
+            savedDownloadsSection.classList.remove('hidden');
+            savedDownloadsList.innerHTML = '';
+
+            for (const item of items) {
+                const card = document.createElement('div');
+                card.className = 'download-card';
+                const sub = item.type === 'series'
+                    ? `${item.season} сезон · ${item.episode} серия ${item.episodeTitle ? '· ' + item.episodeTitle : ''}`
+                    : 'Фильм';
+
+                card.innerHTML = `
+                    <img class="download-card-poster" src="${escapeHtml(item.poster || '/static/icons/icon-192.png')}" alt="Постер">
+                    <div class="download-card-info">
+                        <div class="download-card-title">${escapeHtml(item.title)}</div>
+                        <div class="download-card-ep">${escapeHtml(sub)}</div>
+                        <div class="download-card-meta">
+                            <span class="badge-offline-ready">● Офлайн доступно</span>
+                            <span>·</span>
+                            <span>${escapeHtml(item.formattedSize || '0 МБ')}</span>
+                            ${item.voiceName ? `<span>·</span><span>${escapeHtml(item.voiceName)}</span>` : ''}
+                        </div>
+                    </div>
+                    <button class="btn-delete-dl" title="Удалить из памяти" aria-label="Удалить">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
+                    </button>
+                `;
+
+                // Клик по карточке — запуск видео офлайн без интернета
+                card.addEventListener('click', (e) => {
+                    if (e.target.closest('.btn-delete-dl')) return;
+                    playOfflineItem(item);
+                });
+
+                // Клик по корзине — удаление из памяти
+                card.querySelector('.btn-delete-dl').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if (confirm(`Удалить «${item.title} (${sub})» из скачанных?`)) {
+                        await OfflineManager.remove(item.id);
+                        renderDownloadsScreen();
+                        updateDownloadsBadge();
+                        showToast('Удалено из памяти');
+                    }
+                });
+
+                savedDownloadsList.appendChild(card);
+            }
+        }
+
+        // 3. Общий объём занятой памяти
+        const totalSize = await OfflineManager.getTotalStorageSize();
+        if (downloadsStorageSize) {
+            downloadsStorageSize.textContent = totalSize;
+        }
+    }
+
+    function playOfflineItem(item) {
+        CinemaPlayer.open({
+            streams: {
+                'Офлайн (локально)': item.offlineUrl,
+            },
+            hls_url: item.offlineUrl,
+            filmId: item.filmId,
+            filmUrl: item.filmUrl || '',
+            title: item.title,
+            poster: item.poster,
+            type: item.type,
+            season: item.season,
+            episode: item.episode,
+            episodeTitle: item.episodeTitle || '',
+            translatorName: item.voiceName || 'Офлайн',
+            source: 'offline',
+        });
+    }
+
+    async function updateDownloadsBadge() {
+        try {
+            const items = await OfflineManager.getAll();
+            const active = OfflineManager.getActiveDownloads();
+            const count = items.length + active.length;
+
+            if (navDownloadsBadge) {
+                if (count > 0) {
+                    navDownloadsBadge.textContent = count;
+                    navDownloadsBadge.classList.remove('hidden');
+                } else {
+                    navDownloadsBadge.classList.add('hidden');
+                }
+            }
+
+            const totalSize = await OfflineManager.getTotalStorageSize();
+            if (downloadsStorageSize) {
+                downloadsStorageSize.textContent = totalSize;
+            }
+        } catch (e) {
+            console.warn('updateDownloadsBadge error:', e);
+        }
+    }
+
+    // ─── Запуск потока (Онлайн или Офлайн) ───
 
     async function playStream(preferredSource = null, explicitVoice = null) {
         if (!currentDetails) return;
@@ -646,9 +1115,27 @@ const CinemaApp = (() => {
             selectedTranslator = currentDetails.translators[0];
         }
 
+        // 1. Проверяем, скачана ли уже эта серия/фильм локально
+        const dlId = currentDetails.type === 'series'
+            ? `${currentDetails.id}_s${selectedSeason}_e${selectedEpisode}`
+            : `${currentDetails.id}_movie`;
+
+        const offlineItem = await OfflineManager.get(dlId);
+        if (offlineItem) {
+            console.log('[Clean Cinema] Запуск из офлайн-памяти:', dlId);
+            playOfflineItem(offlineItem);
+            return true;
+        }
+
+        // Если сети нет, а серия не скачана
+        if (!navigator.onLine) {
+            alert('Нет подключения к интернету. Эта серия не была скачана. Перейдите во вкладку «Скачанные», чтобы смотреть сохранённые серии.');
+            switchTab('downloads');
+            return false;
+        }
+
         spinner.classList.remove('hidden');
 
-        // Определение источника (Collaps или Rezka)
         let source = preferredSource;
         if (!source) {
             if (selectedTranslator && (selectedTranslator.source === 'rezka' || String(selectedTranslator.id).startsWith('rezka_'))) {
@@ -684,7 +1171,7 @@ const CinemaApp = (() => {
                 console.warn('Backend stream request failed:', err);
             }
 
-            // Фоллбэк на прямой клиентский парсинг Collaps при ошибках сервера / 410
+            // Фоллбэк Collaps при ошибках
             if (source === 'collaps' && (!data || data.error || !data.streams || Object.keys(data.streams).length === 0)) {
                 if (currentDetails.imdb_id) {
                     console.log('[Collaps Client] Falling back to direct client-side stream extraction...');
@@ -693,19 +1180,12 @@ const CinemaApp = (() => {
                         currentDetails.type,
                         selectedSeason,
                         selectedEpisode,
-                        selectedTranslator ? selectedTranslator.id : 0
+                        voiceName
                     );
-                    if (clientStream && clientStream.hls_url) {
+                    if (clientStream) {
                         data = clientStream;
                     }
                 }
-            }
-
-            // Если выбран источник rezka и произошла ошибка — честно сообщаем, не переключаясь тихо на Collaps
-            if (source === 'rezka' && (!data || data.error || !data.streams || Object.keys(data.streams).length === 0)) {
-                const errMsg = data?.error || 'HDRezka временно недоступна для этого эпизода. Попробуйте выбрать другой плеер в настройках ⚙️.';
-                alert(errMsg);
-                return false;
             }
 
             if (!data || data.error) {
@@ -719,7 +1199,7 @@ const CinemaApp = (() => {
                 return false;
             }
 
-            // Получаем красивое название серии (если сериал)
+            // Название серии из TMDB
             let epTitle = '';
             if (currentDetails.type === 'series' && selectedSeason && selectedEpisode) {
                 const cacheKey = `${currentDetails.id}_s${selectedSeason}`;
@@ -729,7 +1209,7 @@ const CinemaApp = (() => {
                 }
             }
 
-            // Запуск плеера Clean Cinema V2
+            // Запуск плеера
             CinemaPlayer.open({
                 streams: data.streams,
                 hls_url: data.hls_url,
@@ -756,7 +1236,7 @@ const CinemaApp = (() => {
         }
     }
 
-    // ─── Переключение серий (следующая / предыдущая) ───
+    // ─── Переключение серий ───
 
     function playNextEpisode() {
         if (!currentDetails || !currentDetails.seasons || !selectedSeason || !selectedEpisode) return;
@@ -770,7 +1250,6 @@ const CinemaApp = (() => {
             selectedEpisode = episodes[idx + 1];
             playStream();
         } else {
-            // Переход на следующий сезон
             const sKeys = Object.keys(seasons).sort((a, b) => parseInt(a) - parseInt(b));
             const sIdx = sKeys.indexOf(sKey);
             if (sIdx >= 0 && sIdx < sKeys.length - 1) {
@@ -796,7 +1275,6 @@ const CinemaApp = (() => {
             selectedEpisode = episodes[idx - 1];
             playStream();
         } else {
-            // Переход на предыдущий сезон
             const sKeys = Object.keys(seasons).sort((a, b) => parseInt(a) - parseInt(b));
             const sIdx = sKeys.indexOf(sKey);
             if (sIdx > 0) {
@@ -854,7 +1332,6 @@ const CinemaApp = (() => {
             </div>
         `;
 
-        // Клик по карточке — мгновенный запуск прямо на сохранённом моменте!
         card.addEventListener('click', (e) => {
             if (e.target.closest('.continue-card-delete')) return;
             if (item.filmUrl) {
@@ -863,7 +1340,6 @@ const CinemaApp = (() => {
             }
         });
 
-        // Кнопка удаления из истории
         const delBtn = card.querySelector('.continue-card-delete');
         delBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -878,6 +1354,22 @@ const CinemaApp = (() => {
         });
 
         return card;
+    }
+
+    // ─── Всплывающие уведомления (Toast) ───
+
+    function showToast(msg) {
+        let t = document.getElementById('cinema-toast');
+        if (!t) {
+            t = document.createElement('div');
+            t.id = 'cinema-toast';
+            t.className = 'cinema-toast';
+            document.body.appendChild(t);
+        }
+        t.textContent = msg;
+        t.classList.add('visible');
+        clearTimeout(t._timer);
+        t._timer = setTimeout(() => t.classList.remove('visible'), 2800);
     }
 
     // ─── Утилиты ───
@@ -907,5 +1399,5 @@ const CinemaApp = (() => {
 
     init();
 
-    return { openDetails, showHome, loadContinueWatching, playStream };
+    return { openDetails, showHome, switchTab, loadContinueWatching, playStream };
 })();

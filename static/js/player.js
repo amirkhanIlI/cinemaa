@@ -153,6 +153,20 @@ const CinemaPlayer = (() => {
             onTimeUpdate();
         });
 
+        // Показ контролов при движении мыши (ПК / Ноутбук)
+        screen.addEventListener('mousemove', () => {
+            showControls();
+        });
+        screen.addEventListener('pointermove', () => {
+            showControls();
+        });
+
+        // Клик по экрану (включая черные поля вокруг видео)
+        screen.addEventListener('click', (e) => {
+            if (e.target.closest('button, .settings-sheet, .player-progress-bar, input, select, .tap-zone')) return;
+            toggleControls();
+        });
+
         // Контролы
         overlay.addEventListener('click', (e) => {
             if (e.target.closest('button, .tap-zone, .settings-sheet, .player-progress-bar')) return;
@@ -835,12 +849,10 @@ const CinemaPlayer = (() => {
 
         if (e.key === 'ArrowLeft') {
             e.preventDefault();
-            handleDoubleTap('left'); // seek -10s + красивый ripple
-            showControls();
+            seekBy(-10); // 1 нажатие стрелки = моментальная перемотка -10с
         } else if (e.key === 'ArrowRight') {
             e.preventDefault();
-            handleDoubleTap('right'); // seek +10s + красивый ripple
-            showControls();
+            seekBy(10);  // 1 нажатие стрелки = моментальная перемотка +10с
         } else if (e.code === 'Space' || e.key === ' ') {
             e.preventDefault();
             togglePlayPause();
@@ -866,6 +878,22 @@ const CinemaPlayer = (() => {
         }
     }
 
+    function seekBy(seconds) {
+        if (!video.duration && !video.currentTime) return;
+        const newTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + seconds));
+        video.currentTime = newTime;
+        onTimeUpdate();
+        saveProgress();
+        showControls();
+
+        const side = seconds < 0 ? 'left' : 'right';
+        const ripple = (side === 'left' ? tapLeft : tapRight)?.querySelector('.tap-ripple');
+        if (ripple) {
+            ripple.classList.add('show');
+            setTimeout(() => ripple.classList.remove('show'), 350);
+        }
+    }
+
     function seekTo(e) {
         if (!video.duration) return;
         const rect = progressBar.getBoundingClientRect();
@@ -880,11 +908,15 @@ const CinemaPlayer = (() => {
 
     function showControls() {
         overlay.classList.remove('hidden-controls');
+        screen.style.cursor = 'default';
         clearTimeout(controlsTimeout);
         if (!video.paused && settingsSheet.classList.contains('hidden')) {
             controlsTimeout = setTimeout(() => {
                 overlay.classList.add('hidden-controls');
-            }, 3500);
+                if (document.body.classList.contains('player-active') && !video.paused) {
+                    screen.style.cursor = 'none';
+                }
+            }, 3000);
         }
     }
 

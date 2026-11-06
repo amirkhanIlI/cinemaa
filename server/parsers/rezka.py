@@ -42,6 +42,18 @@ HEADERS = {
     "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
 }
 
+# Прямые ссылки на cinemar embed (работают 100% без блокировок Cloudflare)
+KNOWN_EMBEDS = {
+    "131927": "https://cinemar.cc/embed/93101/+NTQ5Y2U0MzM0ZTNkYTY1MzQyYzhhNDc4MjM3NGFjNmM0ZTE2NTAwNzQ3MGUwYTAwMDU1NTAyNDg0MzQ2NWE0MDQwNmQwYTVjNDMwZTE1MGQwNjBiMGUwMTQzNGYxNDBiNWE0NzRkNDE1ZjE2NWY0NTFhMGQ1NzE2MDQ0YzVlNTIxYTViMGQ1YjQzMTgxNTUxNDIxMTBkMTY1MDViMDM0ZDA3MDUwZTRkNTQwZDAzMWQwNTU0MGE0NjRkMTQ1MjQxNWI0NzEzMWE1YjAxMWIxYTU3NGI0NzVkMTMwNjE0NTkwNDAzMDA1NzU1MDYwNzA2MDE1NTFmNDYwOTVmNTE1NjU1NTY0MTAyMDc1NTViNGI1NzFmMTU1YzA4MDc1MzAyNTE2YjRmMGMwYzU3NTYxMTBlMDM1MjA4MTI1MzE5MTE1ZjQ4M2M0ZjA5NWQ0MzVkMTAwOTUxNTUwZDEwNTMxZQ==",
+    "tt14164730": "https://cinemar.cc/embed/93101/+NTQ5Y2U0MzM0ZTNkYTY1MzQyYzhhNDc4MjM3NGFjNmM0ZTE2NTAwNzQ3MGUwYTAwMDU1NTAyNDg0MzQ2NWE0MDQwNmQwYTVjNDMwZTE1MGQwNjBiMGUwMTQzNGYxNDBiNWE0NzRkNDE1ZjE2NWY0NTFhMGQ1NzE2MDQ0YzVlNTIxYTViMGQ1YjQzMTgxNTUxNDIxMTBkMTY1MDViMDM0ZDA3MDUwZTRkNTQwZDAzMWQwNTU0MGE0NjRkMTQ1MjQxNWI0NzEzMWE1YjAxMWIxYTU3NGI0NzVkMTMwNjE0NTkwNDAzMDA1NzU1MDYwNzA2MDE1NTFmNDYwOTVmNTE1NjU1NTY0MTAyMDc1NTViNGI1NzFmMTU1YzA4MDc1MzAyNTE2YjRmMGMwYzU3NTYxMTBlMDM1MjA4MTI1MzE5MTE1ZjQ4M2M0ZjA5NWQ0MzVkMTAwOTUxNTUwZDEwNTMxZQ==",
+    "dekster": "https://cinemar.cc/embed/93101/+NTQ5Y2U0MzM0ZTNkYTY1MzQyYzhhNDc4MjM3NGFjNmM0ZTE2NTAwNzQ3MGUwYTAwMDU1NTAyNDg0MzQ2NWE0MDQwNmQwYTVjNDMwZTE1MGQwNjBiMGUwMTQzNGYxNDBiNWE0NzRkNDE1ZjE2NWY0NTFhMGQ1NzE2MDQ0YzVlNTIxYTViMGQ1YjQzMTgxNTUxNDIxMTBkMTY1MDViMDM0ZDA3MDUwZTRkNTQwZDAzMWQwNTU0MGE0NjRkMTQ1MjQxNWI0NzEzMWE1YjAxMWIxYTU3NGI0NzVkMTMwNjE0NTkwNDAzMDA1NzU1MDYwNzA2MDE1NTFmNDYwOTVmNTE1NjU1NTY0MTAyMDc1NTViNGI1NzFmMTU1YzA4MDc1MzAyNTE2YjRmMGMwYzU3NTYxMTBlMDM1MjA4MTI1MzE5MTE1ZjQ4M2M0ZjA5NWQ0MzVkMTAwOTUxNTUwZDEwNTMxZQ==",
+    "dekster novaja krov": "https://cinemar.cc/embed/93101/+NTQ5Y2U0MzM0ZTNkYTY1MzQyYzhhNDc4MjM3NGFjNmM0ZTE2NTAwNzQ3MGUwYTAwMDU1NTAyNDg0MzQ2NWE0MDQwNmQwYTVjNDMwZTE1MGQwNjBiMGUwMTQzNGYxNDBiNWE0NzRkNDE1ZjE2NWY0NTFhMGQ1NzE2MDQ0YzVlNTIxYTViMGQ1YjQzMTgxNTUxNDIxMTBkMTY1MDViMDM0ZDA3MDUwZTRkNTQwZDAzMWQwNTU0MGE0NjRkMTQ1MjQxNWI0NzEzMWE1YjAxMWIxYTU3NGI0NzVkMTMwNjE0NTkwNDAzMDA1NzU1MDYwNzA2MDE1NTFmNDYwOTVmNTE1NjU1NTY0MTAyMDc1NTViNGI1NzFmMTU1YzA4MDc1MzAyNTE2YjRmMGMwYzU3NTYxMTBlMDM1MjA4MTI1MzE5MTE1ZjQ4M2M0ZjA5NWQ0MzVkMTAwOTUxNTUwZDEwNTMxZQ==",
+    "декстер новая кровь": "https://cinemar.cc/embed/93101/+NTQ5Y2U0MzM0ZTNkYTY1MzQyYzhhNDc4MjM3NGFjNmM0ZTE2NTAwNzQ3MGUwYTAwMDU1NTAyNDg0MzQ2NWE0MDQwNmQwYTVjNDMwZTE1MGQwNjBiMGUwMTQzNGYxNDBiNWE0NzRkNDE1ZjE2NWY0NTFhMGQ1NzE2MDQ0YzVlNTIxYTViMGQ1YjQzMTgxNTUxNDIxMTBkMTY1MDViMDM0ZDA3MDUwZTRkNTQwZDAzMWQwNTU0MGE0NjRkMTQ1MjQxNWI0NzEzMWE1YjAxMWIxYTU3NGI0NzVkMTMwNjE0NTkwNDAzMDA1NzU1MDYwNzA2MDE1NTFmNDYwOTVmNTE1NjU1NTY0MTAyMDc1NTViNGI1NzFmMTU1YzA4MDc1MzAyNTE2YjRmMGMwYzU3NTYxMTBlMDM1MjA4MTI1MzE5MTE1ZjQ4M2M0ZjA5NWQ0MzVkMTAwOTUxNTUwZDEwNTMxZQ==",
+    "декстер: новая кровь": "https://cinemar.cc/embed/93101/+NTQ5Y2U0MzM0ZTNkYTY1MzQyYzhhNDc4MjM3NGFjNmM0ZTE2NTAwNzQ3MGUwYTAwMDU1NTAyNDg0MzQ2NWE0MDQwNmQwYTVjNDMwZTE1MGQwNjBiMGUwMTQzNGYxNDBiNWE0NzRkNDE1ZjE2NWY0NTFhMGQ1NzE2MDQ0YzVlNTIxYTViMGQ1YjQzMTgxNTUxNDIxMTBkMTY1MDViMDM0ZDA3MDUwZTRkNTQwZDAzMWQwNTU0MGE0NjRkMTQ1MjQxNWI0NzEzMWE1YjAxMWIxYTU3NGI0NzVkMTMwNjE0NTkwNDAzMDA1NzU1MDYwNzA2MDE1NTFmNDYwOTVmNTE1NjU1NTY0MTAyMDc1NTViNGI1NzFmMTU1YzA4MDc1MzAyNTE2YjRmMGMwYzU3NTYxMTBlMDM1MjA4MTI1MzE5MTE1ZjQ4M2M0ZjA5NWQ0MzVkMTAwOTUxNTUwZDEwNTMxZQ==",
+    "dexter new blood": "https://cinemar.cc/embed/93101/+NTQ5Y2U0MzM0ZTNkYTY1MzQyYzhhNDc4MjM3NGFjNmM0ZTE2NTAwNzQ3MGUwYTAwMDU1NTAyNDg0MzQ2NWE0MDQwNmQwYTVjNDMwZTE1MGQwNjBiMGUwMTQzNGYxNDBiNWE0NzRkNDE1ZjE2NWY0NTFhMGQ1NzE2MDQ0YzVlNTIxYTViMGQ1YjQzMTgxNTUxNDIxMTBkMTY1MDViMDM0ZDA3MDUwZTRkNTQwZDAzMWQwNTU0MGE0NjRkMTQ1MjQxNWI0NzEzMWE1YjAxMWIxYTU3NGI0NzVkMTMwNjE0NTkwNDAzMDA1NzU1MDYwNzA2MDE1NTFmNDYwOTVmNTE1NjU1NTY0MTAyMDc1NTViNGI1NzFmMTU1YzA4MDc1MzAyNTE2YjRmMGMwYzU3NTYxMTBlMDM1MjA4MTI1MzE5MTE1ZjQ4M2M0ZjA5NWQ0MzVkMTAwOTUxNTUwZDEwNTMxZQ==",
+    "dexter: new blood": "https://cinemar.cc/embed/93101/+NTQ5Y2U0MzM0ZTNkYTY1MzQyYzhhNDc4MjM3NGFjNmM0ZTE2NTAwNzQ3MGUwYTAwMDU1NTAyNDg0MzQ2NWE0MDQwNmQwYTVjNDMwZTE1MGQwNjBiMGUwMTQzNGYxNDBiNWE0NzRkNDE1ZjE2NWY0NTFhMGQ1NzE2MDQ0YzVlNTIxYTViMGQ1YjQzMTgxNTUxNDIxMTBkMTY1MDViMDM0ZDA3MDUwZTRkNTQwZDAzMWQwNTU0MGE0NjRkMTQ1MjQxNWI0NzEzMWE1YjAxMWIxYTU3NGI0NzVkMTMwNjE0NTkwNDAzMDA1NzU1MDYwNzA2MDE1NTFmNDYwOTVmNTE1NjU1NTY0MTAyMDc1NTViNGI1NzFmMTU1YzA4MDc1MzAyNTE2YjRmMGMwYzU3NTYxMTBlMDM1MjA4MTI1MzE5MTE1ZjQ4M2M0ZjA5NWQ0MzVkMTAwOTUxNTUwZDEwNTMxZQ==",
+}
+
 # Известные прямые ссылки на популярные сериалы для 100% надёжности
 KNOWN_SLUGS = {
     "131927": "https://lv.hdrezka.inc/serialy/54895-dekster-novaja-krov.html",
@@ -220,6 +232,105 @@ async def search(query: str) -> list[dict]:
     return []
 
 
+async def _parse_embed(
+    client: RezkaClient,
+    embed_url: str,
+    season: Optional[int] = None,
+    episode: Optional[int] = None,
+    translator_id: Optional[int] = None,
+    preferred_voice: Optional[str] = None,
+) -> dict:
+    """Парсит Cinemar embed URL и получает прямой HLS поток."""
+    c_headers = {"Referer": "https://lv.hdrezka.inc/"}
+    r_embed = await client.get(embed_url, headers=c_headers)
+    if r_embed.status_code != 200:
+        return {"error": f"Cinemar embed returned status {r_embed.status_code}"}
+
+    m_file = re.search(r'"file"\s*:\s*"([^"]+)"', r_embed.text)
+    if not m_file:
+        return {"error": "Embed file not found"}
+
+    playlist = decode_cinemar(m_file.group(1))
+    if not playlist:
+        return {"error": "Decode cinemar failed"}
+
+    target_folder = playlist
+    if season is not None and isinstance(playlist, list) and len(playlist) > 0 and "folder" in playlist[0]:
+        s_idx = min(max(0, season - 1), len(playlist) - 1)
+        s_obj = playlist[s_idx]
+        episodes = s_obj.get("folder", [])
+        if episode is not None and len(episodes) > 0:
+            ep_idx = min(max(0, episode - 1), len(episodes) - 1)
+            target_folder = episodes[ep_idx].get("folder", [])
+        else:
+            target_folder = episodes[0].get("folder", []) if episodes else []
+
+    available_translators = []
+    selected_trans = None
+
+    if isinstance(target_folder, list):
+        for idx, t in enumerate(target_folder):
+            t_title = t.get("title", f"Озвучка {idx + 1}")
+            available_translators.append({
+                "id": idx,
+                "name": t_title,
+                "data": t.get("data"),
+                "file": t.get("file"),
+            })
+
+        # Приоритет выбора: 1. preferred_voice (например TVShows)
+        if preferred_voice:
+            pv_lower = preferred_voice.lower()
+            for t in available_translators:
+                if pv_lower in t["name"].lower():
+                    selected_trans = t
+                    break
+
+        if not selected_trans and translator_id is not None and 0 <= translator_id < len(available_translators):
+            selected_trans = available_translators[translator_id]
+
+        if not selected_trans and available_translators:
+            selected_trans = available_translators[0]
+
+    if not selected_trans:
+        return {"error": "Не найдены озвучки для эпизода"}
+
+    final_hls = ""
+    if selected_trans.get("data"):
+        api_url = "https://cinemar.cc/api/playlist/load"
+        api_headers = {
+            "Referer": embed_url,
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+        }
+        r_stream = await client.post(api_url, json=selected_trans["data"], headers=api_headers)
+        if r_stream.status_code == 200:
+            s_data = r_stream.json()
+            final_hls = s_data.get("file", "")
+
+    if not final_hls and selected_trans.get("file") and selected_trans["file"] != "#":
+        final_hls = selected_trans["file"]
+
+    if not final_hls:
+        return {"error": f"Не удалось получить видеопоток для {selected_trans['name']}"}
+
+    streams = {
+        "Auto (1080p/720p)": final_hls,
+        "1080p": final_hls,
+        "720p": final_hls,
+        "480p": final_hls,
+        "360p": final_hls,
+    }
+
+    return {
+        "streams": streams,
+        "hls_url": final_hls,
+        "audio_tracks": [t["name"] for t in available_translators],
+        "selected_audio_index": selected_trans.get("id", 0),
+        "source": "rezka",
+    }
+
+
 async def get_stream(
     title: str,
     season: Optional[int] = None,
@@ -234,9 +345,29 @@ async def get_stream(
     """
     client = await _get_client()
 
+    clean_key = re.sub(r"\s+", " ", re.sub(r"[:\-–—/]", " ", str(title))).strip().lower()
+
+    # 1. Сначала проверяем прямую ссылку на cinemar embed (100% надежность без Cloudflare!)
+    direct_embed_url = None
+    if item_url and "cinemar.cc" in item_url:
+        direct_embed_url = item_url
+    else:
+        for k, emb in KNOWN_EMBEDS.items():
+            if k in clean_key or clean_key in k or (item_url and k in str(item_url)):
+                direct_embed_url = emb
+                break
+
+    if direct_embed_url:
+        try:
+            res = await _parse_embed(client, direct_embed_url, season, episode, translator_id, preferred_voice)
+            if res and not res.get("error"):
+                return res
+        except Exception as e:
+            logger.warning(f"Direct embed parse failed: {e}")
+
+    # 2. Иначе ищем на зеркалах
     target_url = item_url
     if not target_url:
-        clean_key = re.sub(r"[:\-–—/]", " ", title).strip().lower()
         for k, slug in KNOWN_SLUGS.items():
             if k in clean_key or clean_key in k:
                 target_url = slug
@@ -250,7 +381,6 @@ async def get_stream(
 
     for mirror in MIRRORS:
         try:
-            # Обновляем хост если нужно
             parsed = urllib.parse.urlparse(target_url)
             current_page_url = urllib.parse.urlunparse(parsed._replace(netloc=urllib.parse.urlparse(mirror).netloc, scheme="https"))
 
@@ -259,7 +389,6 @@ async def get_stream(
             if r_page.status_code != 200:
                 continue
 
-            # Ищем cinemar embed
             m_embed = re.search(r'data-src="(https://cinemar\.cc/embed/[^"]+)"', r_page.text)
             if not m_embed:
                 m_embed = re.search(r'src="(https://cinemar\.cc/embed/[^"]+)"', r_page.text)
@@ -268,97 +397,9 @@ async def get_stream(
                 continue
 
             embed_url = m_embed.group(1)
-            c_headers = {"Referer": current_page_url}
-
-            r_embed = await client.get(embed_url, headers=c_headers)
-            if r_embed.status_code != 200:
-                continue
-
-            m_file = re.search(r'"file"\s*:\s*"([^"]+)"', r_embed.text)
-            if not m_file:
-                continue
-
-            playlist = decode_cinemar(m_file.group(1))
-            if not playlist:
-                continue
-
-            # Для сериалов: сезон и серия
-            target_folder = playlist
-            if season is not None and isinstance(playlist, list) and len(playlist) > 0 and "folder" in playlist[0]:
-                s_idx = min(max(0, season - 1), len(playlist) - 1)
-                s_obj = playlist[s_idx]
-                episodes = s_obj.get("folder", [])
-                if episode is not None and len(episodes) > 0:
-                    ep_idx = min(max(0, episode - 1), len(episodes) - 1)
-                    target_folder = episodes[ep_idx].get("folder", [])
-                else:
-                    target_folder = episodes[0].get("folder", []) if episodes else []
-
-            # Список доступных озвучек
-            available_translators = []
-            selected_trans = None
-
-            if isinstance(target_folder, list):
-                for idx, t in enumerate(target_folder):
-                    t_title = t.get("title", f"Озвучка {idx + 1}")
-                    available_translators.append({
-                        "id": idx,
-                        "name": t_title,
-                        "data": t.get("data"),
-                        "file": t.get("file"),
-                    })
-
-                # Приоритет выбора: 1. preferred_voice (например TVShows) 2. translator_id 3. первая озвучка
-                if preferred_voice:
-                    for t in available_translators:
-                        if preferred_voice.lower() in t["name"].lower():
-                            selected_trans = t
-                            break
-
-                if not selected_trans and translator_id is not None and 0 <= translator_id < len(available_translators):
-                    selected_trans = available_translators[translator_id]
-
-                if not selected_trans and available_translators:
-                    selected_trans = available_translators[0]
-
-            if not selected_trans:
-                return {"error": "Не найдены озвучки для эпизода"}
-
-            # Если есть data — грузим поток через API cinemar
-            final_hls = ""
-            if selected_trans.get("data"):
-                api_url = "https://cinemar.cc/api/playlist/load"
-                api_headers = {
-                    "Referer": embed_url,
-                    "Content-Type": "application/json",
-                    "X-Requested-With": "XMLHttpRequest",
-                }
-                r_stream = await client.post(api_url, json=selected_trans["data"], headers=api_headers)
-                if r_stream.status_code == 200:
-                    s_data = r_stream.json()
-                    final_hls = s_data.get("file", "")
-
-            if not final_hls and selected_trans.get("file") and selected_trans["file"] != "#":
-                final_hls = selected_trans["file"]
-
-            if not final_hls:
-                return {"error": f"Не удалось получить видеопоток для {selected_trans['name']}"}
-
-            streams = {
-                "Auto (1080p/720p)": final_hls,
-                "1080p": final_hls,
-                "720p": final_hls,
-                "480p": final_hls,
-                "360p": final_hls,
-            }
-
-            return {
-                "streams": streams,
-                "hls_url": final_hls,
-                "audio_tracks": [t["name"] for t in available_translators],
-                "selected_audio_index": selected_trans.get("id", 0),
-                "source": "rezka",
-            }
+            res = await _parse_embed(client, embed_url, season, episode, translator_id, preferred_voice)
+            if res and not res.get("error"):
+                return res
 
         except Exception as e:
             logger.warning(f"Rezka fetch failed on {mirror}: {e}")

@@ -1260,3 +1260,25 @@ body.player-active .bottom-nav,
     opacity: 1;
 }
 
+/* ===== Скрытие мешающих оверлеев сторонних расширений Chrome (Video Speed Controller и др.) ===== */
+.vsc-controller,
+[data-vsc],
+div[class*="vsc-"],
+div[id*="vsc-"],
+#vsc-controller {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+
+/* Кнопка "Назад" в плеере всегда поверх любых элементов */
+#btn-player-back {
+    position: relative;
+    z-index: 500;
+}
+
+

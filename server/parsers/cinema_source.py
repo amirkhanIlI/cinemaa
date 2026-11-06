@@ -240,7 +240,8 @@ async def get_details(media_type: str, tmdb_id: str | int) -> dict:
     if media_type == "series" and title:
         try:
             from server.parsers import rezka
-            r_stream = await rezka.get_stream(title, season=1, episode=1, preferred_voice="TVShows")
+            direct_emb = rezka.KNOWN_EMBEDS.get(str(tmdb_id))
+            r_stream = await rezka.get_stream(title, season=1, episode=1, preferred_voice="TVShows", item_url=direct_emb)
             r_tracks = r_stream.get("audio_tracks", [])
             if r_tracks:
                 existing_lower = [t["name"].lower() for t in translators]
@@ -529,7 +530,7 @@ async def get_stream_rezka(
             return {"error": "Не удалось определить название фильма"}
 
         # Проверяем прямую ссылку из базы
-        direct_url = rezka.KNOWN_SLUGS.get(clean_id)
+        direct_url = rezka.KNOWN_EMBEDS.get(clean_id) or rezka.KNOWN_SLUGS.get(clean_id)
 
         stream_info = await rezka.get_stream(
             title=title,

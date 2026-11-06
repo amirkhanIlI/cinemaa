@@ -21,6 +21,7 @@
 const CinemaPlayer = (() => {
     // ─── DOM элементы ───
     const screen             = document.getElementById('screen-player');
+    const container          = document.getElementById('player-container');
     const video              = document.getElementById('video-player');
     const overlay            = document.getElementById('player-overlay');
     const btnBack            = document.getElementById('btn-player-back');
@@ -123,10 +124,42 @@ const CinemaPlayer = (() => {
         // Управление с клавиатуры (ноутбук / ПК)
         window.addEventListener('keydown', onKeyDown);
 
-        // Тапы (±10 сек)
-        tapLeft.addEventListener('click', () => handleDoubleTap('left'));
-        tapRight.addEventListener('click', () => handleDoubleTap('right'));
-        tapCenter.addEventListener('click', toggleControls);
+        // Тапы и клики по экрану (ПК мышью: пауза/плей, мобильные: двойной тап ±10с / показ контролов)
+        function onPlayerAreaClick(e, side) {
+            if (e.target.closest('button, .player-progress-bar, #settings-sheet, .settings-modal, .player-top-bar, .player-bottom-bar, .btn-icon-touch, .btn-text-touch, .btn-play-pause-lg, .btn-ep-nav')) {
+                return;
+            }
+
+            // На ПК и ноутбуках клик мышью в любую область экрана (видео или черные полосы) = мгновенный стоп/старт видео
+            const isMouse = (e.pointerType === 'mouse') || (!e.pointerType && window.matchMedia('(pointer: fine)').matches);
+            if (isMouse) {
+                e.stopPropagation();
+                togglePlayPause();
+                return;
+            }
+
+            // На мобильных тач-устройствах (сенсор)
+            if (side === 'left' || side === 'right') {
+                handleDoubleTap(side);
+            } else {
+                toggleControls();
+            }
+        }
+
+        tapLeft.addEventListener('click', (e) => onPlayerAreaClick(e, 'left'));
+        tapRight.addEventListener('click', (e) => onPlayerAreaClick(e, 'right'));
+        tapCenter.addEventListener('click', (e) => onPlayerAreaClick(e, 'center'));
+
+        if (container) {
+            container.addEventListener('click', (e) => {
+                if (e.target.closest('.player-tap-zones')) return;
+                onPlayerAreaClick(e, 'container');
+            });
+            container.addEventListener('dblclick', (e) => {
+                if (e.target.closest('button, .player-progress-bar, #settings-sheet, .settings-modal')) return;
+                toggleFullscreen();
+            });
+        }
 
         // События видео
         video.addEventListener('timeupdate', onTimeUpdate);
@@ -637,36 +670,50 @@ const CinemaPlayer = (() => {
 
         const currentName = (currentState.translatorName || '').toLowerCase().trim();
 
+        function getVoiceDisplayLabel(name) {
+            if (!name) return 'Озвучка';
+            const lower = name.toLowerCase();
+            if (lower.includes('18+') || lower.includes('без цензуры') || lower.includes('с матом') || lower.includes('нецензур')) {
+                if (lower.includes('rezka')) return 'HDrezka (18+ с матом)';
+                return name.replace(/\s*\([^)]*\)/g, '').trim() + ' (18+)';
+            }
+            if (lower.includes('rezka')) {
+                return 'HDrezka (без мата)';
+            }
+            return name.replace(/\s*\([^)]*\)/g, '').trim() || name;
+        }
+
         items.forEach((item) => {
             const fullName = item.fullName;
             const originalIdx = item.originalIndex;
-            // Компактное чистое имя для кнопки, напр: "TVShows (Проф. многоголосый)" -> "TVShows"
-            const shortName = fullName.replace(/\s*\([^)]*\)/g, '').trim() || fullName;
+            const displayLabel = getVoiceDisplayLabel(fullName);
 
             const btn = document.createElement('button');
             const fullNameLower = fullName.toLowerCase();
-            const shortNameLower = shortName.toLowerCase();
+            const labelLower = displayLabel.toLowerCase();
             const isMatchByName = currentName && (
                 fullNameLower === currentName ||
-                shortNameLower === currentName ||
+                labelLower === currentName ||
                 fullNameLower.includes(currentName) || 
-                currentName.includes(shortNameLower)
+                currentName.includes(labelLower) ||
+                (currentName.includes('18+') && (fullNameLower.includes('18+') || labelLower.includes('18+'))) ||
+                (!currentName.includes('18+') && !fullNameLower.includes('18+') && fullNameLower.includes('rezka') && currentName.includes('rezka'))
             );
             let isActive = false;
             if (isRezka) {
                 isActive = isMatchByName || (originalIdx === currentState.translatorId);
             } else {
-                isActive = isMatchByName || (originalIdx === (hls ? hls.audioTrack : currentState.translatorId));
+                isActive = (hls && hls.audioTrack >= 0) ? (originalIdx === hls.audioTrack) : (originalIdx === currentState.translatorId || isMatchByName);
             }
 
             btn.className = 'settings-chip' + (isActive ? ' active' : '');
-            btn.textContent = shortName;
+            btn.textContent = displayLabel;
             btn.title = fullName;
 
             btn.addEventListener('click', () => {
                 if (isRezka) {
                     currentState.translatorId = originalIdx;
-                    currentState.translatorName = shortName;
+                    currentState.translatorName = displayLabel;
                     settingsAudioOpts.querySelectorAll('.settings-chip').forEach(c => c.classList.remove('active'));
                     btn.classList.add('active');
                     window.dispatchEvent(new CustomEvent('change-rezka-voice', {
@@ -682,7 +729,7 @@ const CinemaPlayer = (() => {
                     }
                 }
                 currentState.translatorId = originalIdx;
-                currentState.translatorName = fullName;
+                currentState.translatorName = displayLabel;
                 settingsAudioOpts.querySelectorAll('.settings-chip').forEach(c => c.classList.remove('active'));
                 btn.classList.add('active');
                 saveProgress();
@@ -916,7 +963,7 @@ const CinemaPlayer = (() => {
                 if (document.body.classList.contains('player-active') && !video.paused) {
                     screen.style.cursor = 'none';
                 }
-            }, 3000);
+            }, 2000); // 2 секунды (удобно и не висит лишнее время)
         }
     }
 

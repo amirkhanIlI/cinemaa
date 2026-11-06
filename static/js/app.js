@@ -561,7 +561,14 @@ const CinemaApp = (() => {
             for (const t of data.translators) {
                 const chip = document.createElement('button');
                 chip.className = 'chip';
-                chip.textContent = t.name;
+                let displayName = t.name;
+                const lower = (t.name || '').toLowerCase();
+                if (lower.includes('18+') || lower.includes('без цензуры') || lower.includes('с матом') || lower.includes('нецензур')) {
+                    if (lower.includes('rezka')) displayName = 'HDrezka (18+ с матом)';
+                } else if (lower.includes('rezka')) {
+                    displayName = 'HDrezka (без мата)';
+                }
+                chip.textContent = displayName;
                 chip.dataset.id = t.id;
 
                 chip.addEventListener('click', () => selectTranslator(t));

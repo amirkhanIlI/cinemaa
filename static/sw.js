@@ -1,17 +1,17 @@
-// Service Worker — кэширование статики и офлайн-видео Clean Cinema (V14)
-const CACHE_NAME = 'clean-cinema-v14';
+// Service Worker — кэширование статики и офлайн-видео Clean Cinema (V15)
+const CACHE_NAME = 'clean-cinema-v15';
 const OFFLINE_CACHE = 'cinema-downloads';
 
 const STATIC_ASSETS = [
     '/',
     '/sw.js',
     '/static/sw.js',
-    '/static/css/style.css?v=14',
-    '/static/js/hls.min.js?v=14',
-    '/static/js/app.js?v=14',
-    '/static/js/player.js?v=14',
-    '/static/js/storage.js?v=14',
-    '/static/js/offline.js?v=14',
+    '/static/css/style.css?v=15',
+    '/static/js/hls.min.js?v=15',
+    '/static/js/app.js?v=15',
+    '/static/js/player.js?v=15',
+    '/static/js/storage.js?v=15',
+    '/static/js/offline.js?v=15',
     '/static/manifest.json',
     '/static/icons/icon-192.png',
     '/static/icons/icon-512.png',

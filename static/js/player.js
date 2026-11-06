@@ -501,9 +501,18 @@ const CinemaPlayer = (() => {
 
             hls.on(Hls.Events.ERROR, (event, data) => {
                 if (data.fatal) {
-                    console.warn('[HLS] Fatal:', data.type);
-                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-                    else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+                    console.warn('[HLS] Fatal:', data.type, data.details, data.response?.url);
+                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                        if (currentState.source === 'offline' && url.includes('master.m3u8')) {
+                            const altUrl = url.replace('master.m3u8', 'video.m3u8');
+                            console.log('[HLS Offline] Falling back to direct video stream:', altUrl);
+                            hls.loadSource(altUrl);
+                            return;
+                        }
+                        hls.startLoad();
+                    } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                        hls.recoverMediaError();
+                    }
                 }
             });
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {

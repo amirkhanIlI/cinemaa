@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from server.parsers import cinema_source
@@ -186,18 +186,23 @@ async def api_stream(
                 logger.exception("Rezka stream error")
                 stream_data = {"error": f"Rezka: {e}"}
 
-        # Железный авто-фоллбэк: если kodik/rezka выдали ошибку или пустой результат,
-        # сервер сам мгновенно переключается на рабочий Collaps, чтобы видео ВСЕГДА играло!
+        # Если Kodik или Rezka не дали результат:
+        # Пытаемся получить Collaps на сервере. Если на сервере статус 410 (датацентр),
+        # мы возвращаем исходные данные/ошибку, и браузер клиента сам напрямую мгновенно
+        # загрузит Collaps через fetchClientSideStream без единой ошибки!
         if not stream_data or stream_data.get("error") or not stream_data.get("streams"):
             int_tid = int(translator_id) if str(translator_id).isdigit() else 0
-            stream_data = await cinema_source.get_stream(
+            fallback_data = await cinema_source.get_stream(
                 media_type=m_type,
                 tmdb_id=tmdb_id,
                 translator_id=int_tid,
                 season=season,
                 episode=episode,
             )
-        return stream_data
+            if fallback_data and not fallback_data.get("error") and fallback_data.get("streams"):
+                stream_data = fallback_data
+
+        return stream_data or {"error": "Поток временно недоступен"}
     except Exception as e:
         logger.exception("Stream error")
         return JSONResponse({"error": str(e)}, status_code=502)
@@ -243,6 +248,37 @@ async def api_delete_history(film_id: str):
     """Удалить запись из истории."""
     await db.delete_history_item(film_id)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Service Worker (PWA & Offline Video)
+# ---------------------------------------------------------------------------
+@app.get("/sw.js")
+async def get_root_service_worker():
+    """Раздаёт Service Worker из корня с максимальной областью видимости scope: /."""
+    sw_file = STATIC_DIR / "sw.js"
+    return FileResponse(
+        sw_file,
+        media_type="application/javascript",
+        headers={
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+        },
+    )
+
+
+@app.get("/static/sw.js")
+async def get_static_service_worker():
+    """Раздаёт Service Worker с заголовком Service-Worker-Allowed: /."""
+    sw_file = STATIC_DIR / "sw.js"
+    return FileResponse(
+        sw_file,
+        media_type="application/javascript",
+        headers={
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

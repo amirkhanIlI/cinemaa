@@ -1,7 +1,8 @@
 /**
- * Clean Cinema — Офлайн-загрузки (Offline Storage & Download Engine V11)
+ * Clean Cinema — Офлайн-загрузки (Offline Storage & Download Engine V12)
  * Скачивание серий и фильмов в память браузера (Cache API + IndexedDB) как в Telegram / Netflix.
- * Работает 100% без интернета, без галереи телефона, с удалением в один клик.
+ * Полная поддержка HLS с раздельными дорожками видео + аудио (Collaps и др.).
+ * 100% офлайн без интернета, без галереи телефона, удаление в один клик.
  */
 
 const OfflineManager = (function () {
@@ -32,7 +33,7 @@ const OfflineManager = (function () {
         });
     }
 
-    // ─── Получение списка и отдельных записей ───
+    // ─── Получение записей ───
     async function getAll() {
         try {
             const d = await initDB();
@@ -95,7 +96,6 @@ const OfflineManager = (function () {
     }
 
     async function remove(id) {
-        // Отменяем активную загрузку, если идёт
         if (activeDownloads.has(id)) {
             cancelDownload(id);
         }
@@ -144,7 +144,82 @@ const OfflineManager = (function () {
         }
     }
 
-    // ─── Запуск загрузки ───
+    // ─── Вспомогательная функция скачивания сегментов одного субплейлиста ───
+    async function downloadSegments(playlistText, baseUrl, id, prefix, cache, controller, onChunk) {
+        const lines = playlistText.split('\n');
+        const segmentUrls = [];
+        const rewrittenLines = [];
+
+        let segIndex = 0;
+        let keyIndex = 0;
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('#EXT-X-KEY')) {
+                const uriMatch = trimmed.match(/URI=["']([^"']+)["']/);
+                if (uriMatch) {
+                    const originalKeyUrl = new URL(uriMatch[1], baseUrl).href;
+                    try {
+                        const keyResp = await fetch(originalKeyUrl, { signal: controller.signal });
+                        if (keyResp.ok) {
+                            const keyBlob = await keyResp.blob();
+                            const cachedKeyPath = `/offline-stream/${id}/${prefix}-key-${keyIndex}.bin`;
+                            await cache.put(cachedKeyPath, new Response(keyBlob, {
+                                headers: { 'Content-Type': 'application/octet-stream' }
+                            }));
+                            rewrittenLines.push(trimmed.replace(uriMatch[1], cachedKeyPath));
+                            keyIndex++;
+                            continue;
+                        }
+                    } catch (ke) {
+                        console.warn('[Offline] Key fetch skipped:', ke);
+                    }
+                }
+                rewrittenLines.push(line);
+            } else if (trimmed && !trimmed.startsWith('#')) {
+                const absUrl = new URL(trimmed, baseUrl).href;
+                segmentUrls.push(absUrl);
+                rewrittenLines.push(`/offline-stream/${id}/${prefix}-seg-${segIndex}.ts`);
+                segIndex++;
+            } else {
+                rewrittenLines.push(line);
+            }
+        }
+
+        const total = segmentUrls.length;
+        const CONCURRENCY = 3;
+        let currentIndex = 0;
+
+        async function worker() {
+            while (currentIndex < total) {
+                if (controller.signal.aborted) throw new Error('Загрузка отменена');
+                const i = currentIndex++;
+                const segUrl = segmentUrls[i];
+
+                const segResp = await fetch(segUrl, { signal: controller.signal });
+                if (!segResp.ok) throw new Error(`Ошибка загрузки сегмента ${i}: ${segResp.status}`);
+                const segBlob = await segResp.blob();
+
+                const cacheUrl = `/offline-stream/${id}/${prefix}-seg-${i}.ts`;
+                await cache.put(cacheUrl, new Response(segBlob, {
+                    headers: {
+                        'Content-Type': 'video/mp2t',
+                        'Content-Length': String(segBlob.size),
+                        'Accept-Ranges': 'bytes',
+                    }
+                }));
+
+                if (onChunk) onChunk(segBlob.size);
+            }
+        }
+
+        const workers = Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker());
+        await Promise.all(workers);
+
+        return rewrittenLines.join('\n');
+    }
+
+    // ─── Запуск загрузки (Видео + Аудио) ───
     async function startDownload(opts) {
         const {
             filmId,
@@ -191,12 +266,12 @@ const OfflineManager = (function () {
 
         try {
             if (!('caches' in window)) {
-                throw new Error('CacheStorage не поддерживается вашим браузером');
+                throw new Error('Кэш браузера CacheStorage не поддерживается');
             }
 
             const cache = await caches.open(OFFLINE_CACHE);
 
-            // 0. Кэшируем постер для полного офлайн-отображения
+            // 0. Сохраняем постер в кэш
             let offlinePoster = poster;
             if (poster) {
                 try {
@@ -220,146 +295,184 @@ const OfflineManager = (function () {
             if (!masterResp.ok) throw new Error(`Ошибка загрузки плейлиста: ${masterResp.status}`);
             const masterText = await masterResp.text();
 
-            // 2. Ищем подходящий видеопоток (720p > 1080p > 480p)
-            let subPlaylistUrl = streamUrl;
-            let subPlaylistText = masterText;
+            let totalDownloadedBytes = 0;
+            let currentProgress = 0;
+
+            const notifyProgress = (pct) => {
+                task.progress = pct;
+                task.downloadedBytes = totalDownloadedBytes;
+                window.dispatchEvent(new CustomEvent('download-progress', {
+                    detail: {
+                        id,
+                        episode,
+                        progress: pct,
+                        downloadedBytes: totalDownloadedBytes,
+                        formattedSize: formatBytes(totalDownloadedBytes),
+                    }
+                }));
+            };
+
+            // 2. Ищем и фильтруем аудиодорожки (#EXT-X-MEDIA:TYPE=AUDIO)
+            const masterLines = masterText.split('\n');
+            const audioTracks = [];
+            for (const line of masterLines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('#EXT-X-MEDIA') && trimmed.includes('TYPE=AUDIO') && trimmed.includes('URI=')) {
+                    const mUri = trimmed.match(/URI=["']([^"']+)["']/);
+                    const mName = trimmed.match(/NAME=["']([^"']+)["']/);
+                    if (mUri) {
+                        audioTracks.push({
+                            name: mName ? mName[1] : '',
+                            url: new URL(mUri[1], streamUrl).href,
+                            line: trimmed,
+                        });
+                    }
+                }
+            }
+
+            const hasSeparateAudio = audioTracks.length > 0;
+            let audioSubUrl = null;
+
+            if (hasSeparateAudio) {
+                // Если передано voiceName, пытаемся найти подходящую дорожку
+                let chosenAudio = null;
+                if (voiceName) {
+                    const vLower = voiceName.toLowerCase();
+                    chosenAudio = audioTracks.find(t => t.name.toLowerCase().includes(vLower));
+                }
+                if (!chosenAudio) {
+                    // Ищем по rus или def, иначе берем первую
+                    chosenAudio = audioTracks.find(t => t.name.toLowerCase().startsWith('rus') || t.name.toLowerCase().startsWith('def')) || audioTracks[0];
+                }
+                audioSubUrl = chosenAudio ? chosenAudio.url : audioTracks[0].url;
+
+                console.log('[Offline] Downloading audio track:', audioSubUrl);
+                const aResp = await fetch(audioSubUrl, { signal: controller.signal });
+                if (aResp.ok) {
+                    const aText = await aResp.text();
+                    const rewrittenAudioText = await downloadSegments(
+                        aText,
+                        audioSubUrl,
+                        id,
+                        'audio',
+                        cache,
+                        controller,
+                        (chunkSize) => {
+                            totalDownloadedBytes += chunkSize;
+                            notifyProgress(Math.min(25, Math.round(currentProgress + 1)));
+                        }
+                    );
+
+                    await cache.put(`/offline-stream/${id}/audio.m3u8`, new Response(rewrittenAudioText, {
+                        headers: {
+                            'Content-Type': 'application/vnd.apple.mpegurl',
+                            'Accept-Ranges': 'bytes',
+                        }
+                    }));
+                }
+            }
+
+            // 4. Находим видеопоток (720p > 1080p > 480p)
+            let videoSubUrl = streamUrl;
+            let videoSubText = masterText;
 
             if (masterText.includes('#EXT-X-STREAM-INF')) {
-                const lines = masterText.split('\n');
                 let chosenUrl = null;
-                for (let i = 0; i < lines.length; i++) {
-                    const l = lines[i].trim();
+                for (let i = 0; i < masterLines.length; i++) {
+                    const l = masterLines[i].trim();
                     if (l.startsWith('#EXT-X-STREAM-INF')) {
-                        for (let j = i + 1; j < lines.length; j++) {
-                            const candidate = lines[j].trim();
-                            if (candidate && !candidate.startsWith('#')) {
-                                if (!chosenUrl || l.includes('720') || l.includes('1280x720') || l.includes('1080')) {
-                                    chosenUrl = candidate;
-                                    if (l.includes('720') || l.includes('1280x720')) break;
+                        for (let j = i + 1; j < masterLines.length; j++) {
+                            const cand = masterLines[j].trim();
+                            if (cand && !cand.startsWith('#')) {
+                                if (l.includes('720') || l.includes('1280x720')) {
+                                    chosenUrl = cand;
+                                    break;
+                                }
+                                if (!chosenUrl && (l.includes('1080') || l.includes('1920x1080'))) {
+                                    chosenUrl = cand;
+                                } else if (!chosenUrl) {
+                                    chosenUrl = cand;
                                 }
                                 break;
                             }
+                        }
+                        if (chosenUrl && (l.includes('720') || l.includes('1280x720'))) {
+                            break;
                         }
                     }
                 }
 
                 if (chosenUrl) {
-                    subPlaylistUrl = new URL(chosenUrl, streamUrl).href;
-                    const subResp = await fetch(subPlaylistUrl, { signal: controller.signal });
-                    if (!subResp.ok) throw new Error(`Ошибка загрузки дорожки: ${subResp.status}`);
-                    subPlaylistText = await subResp.text();
+                    videoSubUrl = new URL(chosenUrl, streamUrl).href;
+                    const vResp = await fetch(videoSubUrl, { signal: controller.signal });
+                    if (!vResp.ok) throw new Error(`Ошибка загрузки видеодорожки: ${vResp.status}`);
+                    videoSubText = await vResp.text();
                 }
             }
 
-            // 3. Собираем сегменты (.ts) и ключи шифрования (если есть)
-            const subLines = subPlaylistText.split('\n');
-            const segmentUrls = [];
-            const rewrittenLines = [];
-
-            let segIndex = 0;
-            let keyIndex = 0;
-
-            for (const line of subLines) {
-                const trimmed = line.trim();
-                if (trimmed.startsWith('#EXT-X-KEY')) {
-                    // Обработка AES ключа если есть
-                    const uriMatch = trimmed.match(/URI=["']([^"']+)["']/);
-                    if (uriMatch) {
-                        const originalKeyUrl = new URL(uriMatch[1], subPlaylistUrl).href;
-                        try {
-                            const keyResp = await fetch(originalKeyUrl, { signal: controller.signal });
-                            if (keyResp.ok) {
-                                const keyBlob = await keyResp.blob();
-                                const cachedKeyPath = `/offline-stream/${id}/key-${keyIndex}.bin`;
-                                await cache.put(cachedKeyPath, new Response(keyBlob));
-                                rewrittenLines.push(trimmed.replace(uriMatch[1], cachedKeyPath));
-                                keyIndex++;
-                                continue;
-                            }
-                        } catch (ke) {
-                            console.warn('[Offline] Key fetch error:', ke);
-                        }
-                    }
-                    rewrittenLines.push(line);
-                } else if (trimmed && !trimmed.startsWith('#')) {
-                    const absoluteSegUrl = new URL(trimmed, subPlaylistUrl).href;
-                    segmentUrls.push(absoluteSegUrl);
-                    rewrittenLines.push(`/offline-stream/${id}/seg-${segIndex}.ts`);
-                    segIndex++;
-                } else {
-                    rewrittenLines.push(line);
+            // 5. Скачиваем видео-сегменты
+            const rewrittenVideoText = await downloadSegments(
+                videoSubText,
+                videoSubUrl,
+                id,
+                'video',
+                cache,
+                controller,
+                (chunkSize) => {
+                    totalDownloadedBytes += chunkSize;
+                    const baseProg = hasSeparateAudio ? 25 : 5;
+                    const remaining = 99 - baseProg;
+                    currentProgress = Math.min(99, Math.round(baseProg + (totalDownloadedBytes / (totalDownloadedBytes + 20000000)) * remaining));
+                    notifyProgress(currentProgress);
                 }
-            }
+            );
 
-            if (segmentUrls.length === 0) {
-                throw new Error('В видеопотоке не найдены фрагменты для скачивания');
-            }
-
-            const totalSegments = segmentUrls.length;
-            let downloadedCount = 0;
-            let totalBytes = 0;
-
-            // 4. Скачиваем сегменты параллельно (по 3 потока одновременно)
-            const CONCURRENCY = 3;
-            let currentIndex = 0;
-
-            async function downloadWorker() {
-                while (currentIndex < totalSegments) {
-                    if (controller.signal.aborted) throw new Error('Загрузка отменена');
-                    const i = currentIndex++;
-                    const segUrl = segmentUrls[i];
-
-                    const segResp = await fetch(segUrl, { signal: controller.signal });
-                    if (!segResp.ok) throw new Error(`Ошибка сегмента ${i}: ${segResp.status}`);
-                    const segBlob = await segResp.blob();
-
-                    totalBytes += segBlob.size;
-                    downloadedCount++;
-
-                    // Сохраняем сегмент в Cache API
-                    const cacheUrl = `/offline-stream/${id}/seg-${i}.ts`;
-                    await cache.put(cacheUrl, new Response(segBlob, {
-                        headers: {
-                            'Content-Type': 'video/mp2t',
-                            'Content-Length': String(segBlob.size),
-                        }
-                    }));
-
-                    const pct = Math.min(99, Math.round((downloadedCount / totalSegments) * 100));
-                    task.progress = pct;
-                    task.downloadedBytes = totalBytes;
-
-                    window.dispatchEvent(new CustomEvent('download-progress', {
-                        detail: {
-                            id,
-                            progress: pct,
-                            downloadedBytes: totalBytes,
-                            formattedSize: formatBytes(totalBytes),
-                            downloadedCount,
-                            totalSegments,
-                        }
-                    }));
+            // Сохраняем видео-манифест
+            await cache.put(`/offline-stream/${id}/video.m3u8`, new Response(rewrittenVideoText, {
+                headers: {
+                    'Content-Type': 'application/vnd.apple.mpegurl',
+                    'Accept-Ranges': 'bytes',
                 }
-            }
-
-            const workers = Array.from({ length: Math.min(CONCURRENCY, totalSegments) }, () => downloadWorker());
-            await Promise.all(workers);
-
-            // 5. Сохраняем переписанный плейлист в Cache API
-            const finalManifestText = rewrittenLines.join('\n');
-            const manifestUrl = `/offline-stream/${id}/manifest.m3u8`;
-            await cache.put(manifestUrl, new Response(finalManifestText, {
-                headers: { 'Content-Type': 'application/vnd.apple.mpegurl' }
             }));
 
-            // Также сохраняем master.m3u8
-            const masterM3u8Text = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=2500000\n${manifestUrl}\n`;
+            // 6. Формируем чистый 100% автономный мастер-манифест БЕЗ внешних ссылок
+            let finalMasterText = '';
+            if (hasSeparateAudio) {
+                finalMasterText = [
+                    '#EXTM3U',
+                    '#EXT-X-VERSION:3',
+                    `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="${voiceName || 'Русский'}",DEFAULT=YES,AUTOSELECT=YES,LANGUAGE="ru",URI="/offline-stream/${id}/audio.m3u8"`,
+                    '#EXT-X-STREAM-INF:BANDWIDTH=2500000,CODECS="avc1.64001f,mp4a.40.2",RESOLUTION=1280x720,AUDIO="audio0"',
+                    `/offline-stream/${id}/video.m3u8`,
+                    '',
+                ].join('\n');
+            } else {
+                finalMasterText = [
+                    '#EXTM3U',
+                    '#EXT-X-VERSION:3',
+                    '#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720',
+                    `/offline-stream/${id}/video.m3u8`,
+                    '',
+                ].join('\n');
+            }
+
             const masterUrl = `/offline-stream/${id}/master.m3u8`;
-            await cache.put(masterUrl, new Response(masterM3u8Text, {
-                headers: { 'Content-Type': 'application/vnd.apple.mpegurl' }
+            await cache.put(masterUrl, new Response(finalMasterText, {
+                headers: {
+                    'Content-Type': 'application/vnd.apple.mpegurl',
+                    'Accept-Ranges': 'bytes',
+                }
             }));
 
-            // 6. Сохраняем запись в IndexedDB
+            // Также сохраняем дубликат на manifest.m3u8
+            await cache.put(`/offline-stream/${id}/manifest.m3u8`, new Response(rewrittenVideoText, {
+                headers: {
+                    'Content-Type': 'application/vnd.apple.mpegurl',
+                    'Accept-Ranges': 'bytes',
+                }
+            }));
+
+            // 7. Сохраняем запись в IndexedDB
             const record = {
                 id,
                 filmId,
@@ -372,9 +485,8 @@ const OfflineManager = (function () {
                 episodeTitle: episodeTitle || '',
                 voiceName: voiceName || '',
                 offlineUrl: masterUrl,
-                totalBytes,
-                formattedSize: formatBytes(totalBytes),
-                totalSegments,
+                totalBytes: totalDownloadedBytes,
+                formattedSize: formatBytes(totalDownloadedBytes),
                 savedAt: Date.now(),
             };
 

@@ -210,9 +210,17 @@ const CinemaApp = (() => {
         });
         updateDownloadsBadge();
 
-        // PWA Service Worker
+        // PWA Service Worker с областью видимости scope: / для 100% офлайн-просмотра
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                .then(reg => {
+                    console.log('[SW] Root service worker registered with scope:', reg.scope);
+                    reg.update();
+                })
+                .catch(err => {
+                    console.warn('[SW] Root SW registration failed, trying /static/sw.js:', err);
+                    navigator.serviceWorker.register('/static/sw.js', { scope: '/' }).catch(() => {});
+                });
         }
     }
 
@@ -1171,10 +1179,10 @@ const CinemaApp = (() => {
                 console.warn('Backend stream request failed:', err);
             }
 
-            // Фоллбэк Collaps при ошибках
-            if (source === 'collaps' && (!data || data.error || !data.streams || Object.keys(data.streams).length === 0)) {
+            // Фоллбэк на клиентский плеер при ЛЮБЫХ ошибках сервера (410, 503, блокировки датацентров)
+            if (!data || data.error || !data.streams || Object.keys(data.streams).length === 0) {
                 if (currentDetails.imdb_id) {
-                    console.log('[Collaps Client] Falling back to direct client-side stream extraction...');
+                    console.log('[Clean Cinema] Backend stream unavailable, extracting direct client-side stream...');
                     const clientStream = await fetchClientSideStream(
                         currentDetails.imdb_id,
                         currentDetails.type,
@@ -1182,8 +1190,9 @@ const CinemaApp = (() => {
                         selectedEpisode,
                         voiceName
                     );
-                    if (clientStream) {
+                    if (clientStream && clientStream.streams && Object.keys(clientStream.streams).length > 0) {
                         data = clientStream;
+                        showToast('Запущен видеопоток через прямой плеер');
                     }
                 }
             }

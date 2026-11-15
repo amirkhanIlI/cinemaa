@@ -15,7 +15,7 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from server.parsers import cinema_source
+from server.parsers import cinema_source, alloha
 from server import db
 
 logging.basicConfig(level=logging.INFO)
@@ -205,6 +205,36 @@ async def api_stream(
         return stream_data or {"error": "Поток временно недоступен"}
     except Exception as e:
         logger.exception("Stream error")
+        return JSONResponse({"error": str(e)}, status_code=502)
+
+
+# ---------------------------------------------------------------------------
+# API — Мультиплеер Alloha (TVShows, LostFilm, LE-Production и др.)
+# ---------------------------------------------------------------------------
+@app.get("/api/alloha")
+async def api_alloha(
+    imdb: str | None = Query(None),
+    kp: str | int | None = Query(None),
+    tmdb: str | int | None = Query(None),
+    season: int | None = Query(None),
+    episode: int | None = Query(None),
+    translation: str | None = Query(None),
+):
+    """Получение ссылки на плеер Alloha с нужным сезоном/серией и озвучкой (TVShows и др.)."""
+    try:
+        data = await alloha.get_alloha_player(
+            imdb_id=imdb,
+            kp_id=kp,
+            tmdb_id=tmdb,
+            season=season,
+            episode=episode,
+            translation=translation,
+        )
+        if data:
+            return data
+        return JSONResponse({"error": "Контент не найден в базе Alloha"}, status_code=404)
+    except Exception as e:
+        logger.exception("Alloha error")
         return JSONResponse({"error": str(e)}, status_code=502)
 
 

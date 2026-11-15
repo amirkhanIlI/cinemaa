@@ -23,6 +23,7 @@ const CinemaPlayer = (() => {
     const screen             = document.getElementById('screen-player');
     const container          = document.getElementById('player-container');
     const video              = document.getElementById('video-player');
+    const iframe             = document.getElementById('iframe-player');
     const overlay            = document.getElementById('player-overlay');
     const btnBack            = document.getElementById('btn-player-back');
     const btnPlayPause       = document.getElementById('btn-play-pause');
@@ -426,6 +427,13 @@ const CinemaPlayer = (() => {
             setActiveBalancer(opts.source);
         }
 
+        if (container) container.classList.remove('iframe-active');
+        if (iframe) {
+            iframe.classList.add('hidden');
+            iframe.src = 'about:blank';
+        }
+        video.classList.remove('hidden');
+
         if (audioTrackNames && audioTrackNames.length > 0) {
             buildAudioMenu(audioTrackNames.map(n => ({ name: n })));
         }
@@ -481,6 +489,54 @@ const CinemaPlayer = (() => {
         showControls();
     }
 
+    function openIframe(opts) {
+        currentState = {
+            filmId: opts.filmId,
+            filmUrl: opts.filmUrl || '',
+            title: opts.title || '',
+            poster: opts.poster || '',
+            type: opts.type || 'series',
+            season: opts.season || 1,
+            episode: opts.episode || 1,
+            episodeTitle: opts.episodeTitle || '',
+            translatorName: opts.translatorName || 'TVShows',
+            source: 'alloha',
+        };
+
+        setActiveBalancer('alloha');
+
+        if (hls) { hls.destroy(); hls = null; }
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+        video.classList.add('hidden');
+
+        if (container) container.classList.add('iframe-active');
+        if (iframe) {
+            iframe.src = opts.iframeUrl;
+            iframe.classList.remove('hidden');
+        }
+
+        if (btnPrevEp) btnPrevEp.classList.add('hidden');
+        if (btnNextEp) btnNextEp.classList.add('hidden');
+        if (btnNextCountdown) btnNextCountdown.classList.add('hidden');
+
+        let titleText = currentState.title;
+        if (currentState.season && currentState.episode) {
+            titleText += ` · С${currentState.season}:Э${currentState.episode}`;
+            if (currentState.translatorName) {
+                titleText += ` (${currentState.translatorName})`;
+            }
+        }
+        playerTitle.textContent = titleText;
+
+        document.body.classList.add('player-active');
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        screen.classList.add('active');
+
+        showControls();
+    }
+
     function close() {
         saveProgress();
         clearInterval(saveInterval);
@@ -488,6 +544,13 @@ const CinemaPlayer = (() => {
             clearTimeout(sleepTimerTimeout);
             sleepTimerTimeout = null;
         }
+
+        if (container) container.classList.remove('iframe-active');
+        if (iframe) {
+            iframe.classList.add('hidden');
+            iframe.src = 'about:blank';
+        }
+        video.classList.remove('hidden');
 
         video.pause();
         video.removeAttribute('src');
@@ -1035,5 +1098,5 @@ const CinemaPlayer = (() => {
 
     init();
 
-    return { open, close, saveProgress, setSpeed, setAspect, togglePiP, getActiveBalancer, setActiveBalancer };
+    return { open, openIframe, close, saveProgress, setSpeed, setAspect, togglePiP, getActiveBalancer, setActiveBalancer };
 })();

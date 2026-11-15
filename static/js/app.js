@@ -188,6 +188,16 @@ const CinemaApp = (() => {
             }
         });
 
+        // Переключение источника/балансера (Collaps <-> Alloha TVShows)
+        window.addEventListener('change-balancer', async (e) => {
+            const { source, preferredVoice } = e.detail || {};
+            if (source === 'alloha') {
+                await playStream('alloha', preferredVoice || 'TVShows');
+            } else {
+                await playStream('collaps');
+            }
+        });
+
         // Переключение озвучки Rezka из шторки ⚙️
         window.addEventListener('change-rezka-voice', async (e) => {
             const { translatorId, translatorName } = e.detail || {};
@@ -396,6 +406,43 @@ const CinemaApp = (() => {
                     }
                     break;
                 }
+            }
+        }
+
+        // Подключаем мультиплеер Alloha (TVShows, LostFilm, LE-Production и др.)
+        if (data && data.imdb_id) {
+            try {
+                const aResp = await fetch(`/api/alloha?imdb=${encodeURIComponent(data.imdb_id)}`);
+                if (aResp.ok) {
+                    const aData = await aResp.json();
+                    if (aData && aData.translations && aData.translations.length > 0) {
+                        data.alloha = aData;
+                        const existingTranslators = data.translators || [];
+                        const existingNames = new Set(existingTranslators.map(t => t.name.toLowerCase()));
+
+                        aData.translations.forEach(tr => {
+                            const name = tr.name;
+                            const isTvShows = name.toLowerCase().includes('tvshows');
+                            const entry = {
+                                id: `alloha_${tr.id}`,
+                                name: name,
+                                source: 'alloha',
+                                alloha_id: tr.id,
+                                alloha_voice: name
+                            };
+                            if (isTvShows) {
+                                // TVShows ставим на 1 место с приоритетом!
+                                existingTranslators.unshift(entry);
+                            } else if (!existingNames.has(name.toLowerCase())) {
+                                existingTranslators.push(entry);
+                                existingNames.add(name.toLowerCase());
+                            }
+                        });
+                        data.translators = existingTranslators;
+                    }
+                }
+            } catch (aErr) {
+                console.warn('[Alloha Client] enrich failed:', aErr);
             }
         }
     }
@@ -1153,14 +1200,56 @@ const CinemaApp = (() => {
 
         let source = preferredSource;
         if (!source) {
-            if (selectedTranslator && (selectedTranslator.source === 'rezka' || String(selectedTranslator.id).startsWith('rezka_'))) {
+            if (selectedTranslator && (selectedTranslator.source === 'alloha' || String(selectedTranslator.id).startsWith('alloha_'))) {
+                source = 'alloha';
+            } else if (selectedTranslator && (selectedTranslator.source === 'rezka' || String(selectedTranslator.id).startsWith('rezka_'))) {
                 source = 'rezka';
             } else {
                 source = localStorage.getItem('cinema_preferred_balancer') || 'collaps';
             }
         }
 
-        let voiceName = explicitVoice || selectedTranslator?.rezka_voice || selectedTranslator?.name || '';
+        let voiceName = explicitVoice || selectedTranslator?.rezka_voice || selectedTranslator?.alloha_voice || selectedTranslator?.name || '';
+
+        // Запуск через мультиплеер Alloha (TVShows, LostFilm, LE-Production и др.)
+        if (source === 'alloha' || selectedTranslator?.source === 'alloha') {
+            try {
+                let aUrl = `/api/alloha?imdb=${encodeURIComponent(currentDetails.imdb_id || '')}`;
+                if (currentDetails.type === 'series') {
+                    aUrl += `&season=${selectedSeason || 1}&episode=${selectedEpisode || 1}`;
+                }
+                const transId = selectedTranslator?.alloha_id;
+                if (transId) {
+                    aUrl += `&translation=${encodeURIComponent(transId)}`;
+                } else if (voiceName) {
+                    aUrl += `&translation=${encodeURIComponent(voiceName)}`;
+                }
+                const aResp = await fetch(aUrl);
+                const aData = await aResp.json();
+                if (aData && aData.iframe_url) {
+                    spinner.classList.add('hidden');
+                    const epTitle = (currentDetails.type === 'series')
+                        ? `S${selectedSeason} E${selectedEpisode}`
+                        : '';
+                    CinemaPlayer.openIframe({
+                        iframeUrl: aData.iframe_url,
+                        title: currentDetails.title,
+                        filmId: currentDetails.id,
+                        filmUrl: currentDetails.url,
+                        type: currentDetails.type,
+                        season: selectedSeason,
+                        episode: selectedEpisode,
+                        episodeTitle: epTitle,
+                        translatorName: voiceName || 'TVShows',
+                        source: 'alloha',
+                    });
+                    return true;
+                }
+            } catch (aErr) {
+                console.warn('[Alloha Stream] launch failed:', aErr);
+            }
+        }
+
         if (source === 'rezka') {
             const isCollapsOnly = voiceName.includes('Novamedia') || voiceName.includes('JASKIER') || voiceName.includes('Дубляж') || voiceName.includes('Eng.Original');
             if (!voiceName || isCollapsOnly) {
